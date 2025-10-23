@@ -3,161 +3,166 @@
 Tài liệu này giúp thành viên mới trong team hiểu rõ **cấu trúc dự án backend** (FastAPI + MySQL) của hệ thống EmpaPortal V2, bao gồm:
 
 - Giải thích chức năng từng thư mục, class, và file quan trọng
-- Ví dụ minh họa quy trình khi tạo một công cụ (tool) mới
+- Giới thiệu cấu trúc module hóa gọn gàng (mỗi tool là một module độc lập)
+- Ví dụ quy trình khi tạo một công cụ (tool) mới
 
 ---
 
 ## 🧱 1. Tổng quan dự án
 
-Dự án backend được phát triển bằng **Python (FastAPI)** với kiến trúc **Clean Architecture**, chia thành nhiều tầng rõ ràng để đảm bảo dễ bảo trì, mở rộng và tái sử dụng.
+Dự án backend được phát triển bằng **Python (FastAPI)**, sử dụng kiến trúc kết hợp giữa **Clean Architecture** và **Modular Architecture (feature-based)**.
 
-Mỗi tầng có vai trò riêng:
+Điều này có nghĩa là:
 
-| Tầng                    | Vai trò chính                                  | Mô tả ngắn                           |
-| ----------------------- | ---------------------------------------------- | ------------------------------------ |
-| **API Layer**           | Giao tiếp giữa frontend (Next.js) và backend   | Xử lý request/response HTTP          |
-| **Domain Layer**        | Chứa toàn bộ logic nghiệp vụ của hệ thống      | Quản lý entity, repository, service  |
-| **Core Layer**          | Cấu hình hệ thống (DB, log, env, config)       | Liên kết với hạ tầng, MySQL          |
-| **Storage Layer**       | Quản lý cache và cơ sở dữ liệu vật lý          | Chứa script SQL, cache data          |
-| **Middleware/Internal** | Xử lý logic nội bộ, bảo mật, logging, task nền | Không tương tác trực tiếp với client |
-| **Document/Tests**      | Tài liệu & kiểm thử hệ thống                   | README, SQL scripts, unit test       |
+- Các thành phần cốt lõi như `core`, `domain`, `api` được dùng chung.
+- Mỗi công cụ (tool) được tổ chức như một **module độc lập**, có đầy đủ controller, service, schema, và tài nguyên riêng.
 
 ---
 
-## 📂 2. Cấu trúc thư mục (chi tiết các cấp)
+## 📂 2. Cấu trúc thư mục (chi tiết)
 
 ```
 .
 ├── app
-│   ├── __init__.py
-│   ├── api                      # Tầng giao tiếp với frontend
-│   │   ├── controllers           # Xử lý request/response, gọi service
-│   │   │   ├── tool03_controller.py
-│   │   │   ├── tool04_controller.py
+│   ├── api                      # Endpoint chung của hệ thống
+│   │   ├── controllers           # Xử lý request/response
 │   │   │   └── user_controller.py
-│   │   ├── routes                # Định nghĩa endpoint API
-│   │   │   ├── tool03_router.py
-│   │   │   ├── tool04_router.py
+│   │   ├── routes                # Định nghĩa các endpoint HTTP
 │   │   │   └── user_route.py
-│   │   └── validators            # Xác thực dữ liệu vào/ra (Pydantic models)
-│   │       ├── tool03_validator.py
-│   │       ├── tool04_validator.py
+│   │   └── validators            # Kiểm tra dữ liệu bằng Pydantic
 │   │       └── user_validator.py
 │   │
-│   ├── core                     # Cấu hình, kết nối và logging
-│   │   ├── config.py             # Cấu hình biến môi trường (.env)
-│   │   ├── database.py           # Kết nối tới MySQL
+│   ├── assets                    # Tài nguyên tĩnh toàn hệ thống (font, hình...)
+│   │   └── fonts/
+│   │       ├── NotoSansJP-Bold.ttf
+│   │       └── WorkSans-Medium.ttf
+│   │
+│   ├── core                      # Thành phần lõi: cấu hình, kết nối DB, log
+│   │   ├── config.py             # Đọc biến môi trường từ .env
+│   │   ├── database.py           # Kết nối tới MySQL (SQLAlchemy)
 │   │   └── logger.py             # Ghi log hệ thống
 │   │
-│   ├── domain                   # Logic nghiệp vụ (business logic)
-│   │   ├── entities              # Mô hình ORM cho từng bảng DB
-│   │   │   ├── tool03_entity.py
-│   │   │   ├── tool04_entity.py
-│   │   │   └── user_entity.py
-│   │   ├── repositories          # CRUD, thao tác trực tiếp DB
-│   │   │   ├── tool03_repository.py
-│   │   │   ├── tool04_repository.py
-│   │   │   └── user_repository.py
-│   │   └── services              # Logic nghiệp vụ chính, xử lý dữ liệu
-│   │       ├── tool03_service.py
-│   │       ├── tool04_service.py
-│   │       └── user_service.py
+│   ├── domain                    # Logic nghiệp vụ chung (vd: quản lý user)
+│   │   ├── entities              # Mô hình ORM ánh xạ bảng DB
+│   │   ├── repositories          # CRUD, thao tác dữ liệu DB
+│   │   └── services              # Xử lý logic nghiệp vụ
 │   │
-│   ├── internal                 # Xử lý tác vụ nội bộ (cronjob, async job...)
-│   ├── middleware               # Middleware như auth, CORS, rate limit
-│   ├── storage                  # Lưu trữ, cache và SQL script
-│   │   ├── cache/               # Dành cho Redis hoặc cache tạm
-│   │   └── database/            # File SQL hoặc migration script
-│   └── main.py                  # Điểm khởi động của ứng dụng FastAPI
+│   ├── internal                  # Tác vụ nội bộ (cronjob, background tasks...)
+│   ├── middleware                # Middleware như auth, CORS, rate limit
+│   ├── storage                   # Cache, file tạm, SQL script, migration
+│   │   ├── cache/
+│   │   └── database/
+│   │
+│   ├── tool03                    # Mỗi công cụ là 1 module độc lập
+│   │   ├── controller.py         # Nhận request, gọi service, trả response
+│   │   ├── service.py            # Logic nghiệp vụ chính của tool03
+│   │   ├── schemas.py            # Định nghĩa schema request/response
+│   │   ├── repository.py         # (tùy chọn) Xử lý CRUD nếu có DB
+│   │   ├── assets/               # Template hoặc hình ảnh riêng của tool03
+│   │   │   └── templates/
+│   │   │       ├── template_A.jpg
+│   │   │       └── template_B.jpg
+│   │   └── __init__.py
+│   │
+│   └── main.py                   # Điểm khởi động chính của ứng dụng FastAPI
 │
-├── document                    # Tài liệu nội bộ và script SQL
+├── document                      # Tài liệu nội bộ và script SQL
 │   └── database
-│       └── 001_init.sql         # File tạo cơ sở dữ liệu MySQL ban đầu
+│       └── 001_init.sql           # Tạo cơ sở dữ liệu ban đầu
 │
-├── scripts                     # Script tiện ích (ví dụ: sinh file tool mới)
+├── scripts                        # Script tiện ích (vd: sinh file tool mới)
 │   └── new_tool.py
 │
-├── tests                       # Unit test và integration test
-├── requirements.txt             # Danh sách thư viện Python
-└── README.md                    # Tài liệu chính của dự án
+├── tests                          # Unit test và integration test
+├── requirements.txt               # Danh sách thư viện Python
+└── README.md                      # Tài liệu chính của dự án
 ```
 
 ---
 
-## ⚙️ 3. Chức năng chi tiết từng thư mục
+## ⚙️ 3. Giải thích chi tiết từng phần
 
 ### 📁 `app/api/`
 
-- **controllers/**: nhận request, xử lý dữ liệu input, gọi service phù hợp.
-- **routes/**: khai báo các endpoint (`/api/tool03`, `/api/users`, ...).
-- **validators/**: định nghĩa dữ liệu vào/ra bằng Pydantic (`Tool03Request`, `Tool03Response`).
-
-### 📁 `app/domain/`
-
-- **entities/**: ánh xạ các bảng DB bằng SQLAlchemy (ORM).
-- **repositories/**: thao tác trực tiếp với DB (insert, update, select, delete).
-- **services/**: xử lý nghiệp vụ (gọi nhiều repository, kiểm tra logic, validate nghiệp vụ).
+- **controllers/**: Nhận request từ frontend, xử lý dữ liệu đầu vào, gọi service tương ứng.
+- **routes/**: Khai báo các endpoint API (ví dụ: `/api/users`).
+- **validators/**: Định nghĩa và xác thực dữ liệu bằng Pydantic models.
 
 ### 📁 `app/core/`
 
-- **config.py**: đọc file `.env` để lấy biến môi trường (DB_HOST, DB_USER,...)
-- **database.py**: tạo `engine`, `SessionLocal` kết nối đến MySQL.
-- **logger.py**: cấu hình log, lưu log ra file `logs/app.log`.
+- **config.py**: Đọc file `.env` để lấy cấu hình môi trường.
+- **database.py**: Tạo engine và session kết nối MySQL.
+- **logger.py**: Cấu hình logging (ghi log ra console hoặc file `logs/app.log`).
 
-### 📁 `app/storage/`
+### 📁 `app/domain/`
 
-- **database/**: lưu các file SQL tạo database hoặc migration (ví dụ: `001_init.sql`).
-- **cache/**: dành cho Redis hoặc các file cache.
+- **entities/**: ORM ánh xạ bảng DB.
+- **repositories/**: Xử lý CRUD.
+- **services/**: Thực thi logic nghiệp vụ (vd: tạo user, kiểm tra quyền...).
+
+### 📁 `app/toolXX/`
+
+- Mỗi tool (ví dụ `tool03`, `tool04`) là **một module riêng biệt**, có thể phát triển, test và triển khai độc lập.
+- Mỗi tool gồm:
+
+  - `controller.py`: Xử lý request/response.
+  - `service.py`: Logic nghiệp vụ chính.
+  - `schemas.py`: Xác thực dữ liệu (request, response).
+  - `repository.py`: (tùy chọn) CRUD hoặc query DB.
+  - `assets/`: Template hoặc hình ảnh riêng.
+
+### 📁 `app/assets/`
+
+- Chứa font, hình ảnh dùng chung cho toàn hệ thống (như font Nhật Bản, logo...).
+
+### 📁 `app/middleware/`
+
+- Middleware kiểm tra quyền, logging, bảo mật, rate-limit.
 
 ### 📁 `document/`
 
-- Lưu các tài liệu kỹ thuật, hướng dẫn, file SQL.
-
-  - Ví dụ: `document/database/001_init.sql` để khởi tạo DB.
+- Lưu tài liệu và các câu lệnh SQL khởi tạo DB (`001_init.sql`).
 
 ### 📁 `scripts/`
 
-- Chứa các script tiện ích phục vụ phát triển.
-
-  - Ví dụ: `new_tool.py` để tự động tạo cấu trúc file cho tool mới.
+- Script hỗ trợ phát triển, ví dụ `new_tool.py` giúp sinh tự động cấu trúc tool mới.
 
 ### 📁 `tests/`
 
-- Chứa các file test (unit test, integration test) để đảm bảo chất lượng code.
+- Kiểm thử đơn vị (unit test) và kiểm thử tích hợp.
 
 ---
 
-## 🧠 4. Khi tạo một công cụ mới (ví dụ: Tool03)
+## 🧠 4. Khi tạo một công cụ mới (ví dụ: Tool04)
 
-Một công cụ trong hệ thống EmpaPortal thường có **6 file chính**, được tạo trong hai tầng: `api` và `domain`.
+Một công cụ trong EmpaPortal được chia thành 4–5 file chính:
 
-| File                                           | Vai trò                                   |
-| ---------------------------------------------- | ----------------------------------------- |
-| `app/api/controllers/tool03_controller.py`     | Nhận request, gọi service, xử lý response |
-| `app/api/routes/tool03_router.py`              | Định nghĩa endpoint `/api/tool03`         |
-| `app/api/validators/tool03_validator.py`       | Định nghĩa schema (request/response)      |
-| `app/domain/entities/tool03_entity.py`         | Định nghĩa bảng dữ liệu (ORM)             |
-| `app/domain/repositories/tool03_repository.py` | CRUD với DB                               |
-| `app/domain/services/tool03_service.py`        | Xử lý logic nghiệp vụ, gọi repository     |
+| File                           | Vai trò                                  |
+| ------------------------------ | ---------------------------------------- |
+| `app/tool04/controller.py`     | Xử lý request, gọi service, trả response |
+| `app/tool04/service.py`        | Xử lý logic nghiệp vụ chính              |
+| `app/tool04/schemas.py`        | Định nghĩa schema request/response       |
+| `app/tool04/repository.py`     | (Tùy chọn) Thao tác DB                   |
+| `app/tool04/assets/templates/` | Template hoặc file hình ảnh liên quan    |
 
 ### 🔄 Luồng hoạt động
 
-1. Frontend gửi request tới `/api/tool03`.
-2. `tool03_router.py` nhận request → chuyển tới `tool03_controller.py`.
-3. `tool03_controller` xử lý dữ liệu đầu vào (`tool03_validator`) → gọi `tool03_service`.
-4. `tool03_service` xử lý nghiệp vụ, gọi `tool03_repository` để ghi DB.
-5. `tool03_repository` thao tác trên bảng `tool03_entity` (ORM) → lưu xuống MySQL.
-6. Trả response JSON về frontend.
+1. Frontend gọi endpoint `/api/tool04`.
+2. `controller.py` nhận request, xác thực dữ liệu qua `schemas.py`.
+3. `controller.py` gọi `service.py` để xử lý logic.
+4. `service.py` thao tác với DB (qua `repository.py`) hoặc xử lý file.
+5. Kết quả trả về frontend dưới dạng JSON.
 
 ---
 
 ## ✅ 5. Tổng kết
 
-Dự án backend EmpaPortal V2 tuân theo mô hình **Clean Architecture**, giúp:
+Cấu trúc hiện tại là sự kết hợp giữa **Clean Architecture** và **Module-Based Architecture (feature-based)**:
 
-- Dễ bảo trì và mở rộng từng công cụ riêng lẻ.
-- Phân chia rõ vai trò giữa giao tiếp (API), nghiệp vụ (Domain) và hạ tầng (Core).
-- Dễ dàng thêm tính năng mới (tool, user, shop...) chỉ bằng việc thêm 6 file theo chuẩn.
+- Gọn gàng, dễ đọc, dễ quản lý cho từng tool.
+- Mỗi tool là một module độc lập có thể phát triển hoặc deploy riêng.
+- Các thành phần dùng chung (DB, logging, config) nằm trong `core/`.
+- Phù hợp cho dự án EmpaPortal: nhiều công cụ nhỏ, chạy độc lập, dễ bảo trì.
 
-📁 Mọi thông tin về database nằm trong `document/database/`
-📄 Tài liệu này nằm trong `README.md` để team đọc hiểu cấu trúc và quy tắc chung.
+📁 Toàn bộ file tài liệu và SQL nằm trong `document/database/`
+📄 Tài liệu này (`README.md`) giúp mọi thành viên nắm rõ cách tổ chức và quy tắc khi phát triển backend EmpaPortal V2.

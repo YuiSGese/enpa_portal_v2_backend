@@ -2,6 +2,18 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 import os
 
+# Đường dẫn thư mục gốc của ứng dụng (nơi chứa thư mục 'app')
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Đường dẫn đến thư mục assets chung
+TOOL03_ASSETS_DIR = BASE_DIR / "tool03" / "assets"
+
+# Đường dẫn đến thư mục fonts chung
+FONTS_DIR = ASSETS_DIR / "fonts"
+
+# Đường dẫn đến thư mục templates của Tool 03
+TOOL03_TEMPLATES_DIR = TOOL03_ASSETS_DIR / "templates"
+
 load_dotenv()
 
 class Settings(BaseModel):
