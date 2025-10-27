@@ -7,7 +7,7 @@ from app.core.logger import logger
 
 # Import các router
 from app.api.routes import user_route # Router user hiện có
-from app.tool03.api import router as tool03_api_router # Router mới cho Tool 03
+from app.tool03 import router as tool03_router # Router mới cho Tool 03 (Đường dẫn đúng)
 # Import các router khác nếu có (ví dụ: tool04_router...)
 
 # Tạm thời gán giá trị cứng nếu settings chưa sẵn sàng
@@ -18,8 +18,8 @@ app = FastAPI(title=APP_NAME) # Sử dụng biến tạm
 
 # Include các router
 app.include_router(user_route.router)
-app.include_router(tool03_api_router.router)
-# app.include_router(tool04_api_router.router) # Nếu có router tool04
+app.include_router(tool03_router.router) # <<< SỬA LẠI TÊN Ở ĐÂY
+# app.include_router(tool04_router.router) # Nếu có router tool04
 
 @app.on_event("startup")
 async def startup_event():

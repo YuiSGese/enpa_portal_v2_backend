@@ -1,33 +1,48 @@
-# -*- coding: utf-8 -*-
+    # -*- coding: utf-8 -*-
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
-# Định nghĩa cấu trúc dữ liệu cho một hàng sản phẩm gửi từ Frontend
+    # --- Input Schemas ---
 class Tool03ProductRowInput(BaseModel):
-    id: str # ID tạm thời từ frontend, dùng để map kết quả
-    productCode: str = Field(..., alias="productCode", description="商品管理番号")
-    template: str = Field(..., description="テンプレート名 (例: 'テンプレートA')")
-    startDate: str = Field(..., alias="startDate", description="セール開始日時 (ISO format)")
-    endDate: str = Field(..., alias="endDate", description="セール終了日時 (ISO format)")
-    priceType: str = Field(..., alias="priceType", description="二重価格タイプ ('当店通常価格', 'メーカー希望小売価格', 'クーポン利用で', 'custom')")
-    customPriceType: Optional[str] = Field(None, alias="customPriceType", description="二重価格自由記入 (priceTypeが'custom'の場合)")
-    regularPrice: str = Field(..., alias="regularPrice", description="通常価格")
-    salePrice: str = Field(..., alias="salePrice", description="セール価格")
-    saleText: Optional[str] = Field(None, alias="saleText", description="セール文言 (最大12文字)")
-    # discount: str # Frontend tự tính, không cần gửi
-    discountType: Optional[str] = Field("percent", alias="discountType", description="割引表示タイプ ('percent' or 'yen')")
-    mobileStartDate: Optional[str] = Field(None, alias="mobileStartDate", description="楽天モバイル開始日時 (ISO format, Optional)")
-    mobileEndDate: Optional[str] = Field(None, alias="mobileEndDate", description="楽天モバイル終了日時 (ISO format, Optional)")
+        id: str # ID của dòng từ Frontend (để map kết quả)
+        productCode: str = Field(..., description="商品管理番号")
+        template: str = Field(..., description="テンプレート名 (例: テンプレートA)")
+        startDate: str = Field(..., description="開始日時 (YYYY-MM-DDTHH:mm)")
+        endDate: str = Field(..., description="終了日時 (YYYY-MM-DDTHH:mm)")
+        priceType: str = Field(..., description="二重価格タイプ (当店通常価格, メーカー希望小売価格, クーポン利用で, custom)")
+        customPriceType: Optional[str] = Field(None, description="店舗自由記入の二重価格文言")
+        regularPrice: str = Field(..., description="通常価格（税込）（値）")
+        salePrice: str = Field(..., description="セール価格（税込）（値）")
+        saleText: Optional[str] = Field(None, description="セール文言 (12文字以内)")
+        # discount: str # Sẽ được tính toán ở backend
+        discountType: Optional[str] = Field("percent", description="割引表示タイプ ('percent' or 'yen')") # Mặc định là %
+        mobileStartDate: Optional[str] = Field(None, description="楽天モバイル開始日時 (YYYY-MM-DDTHH:mm)")
+        mobileEndDate: Optional[str] = Field(None, description="楽天モバイル終了日時 (YYYY-MM-DDTHH:mm)")
 
-    class Config:
-        populate_by_name = True # Cho phép dùng alias khi nhận JSON
-
-# Định nghĩa cấu trúc dữ liệu cho request tạo job
 class Tool03CreateJobRequest(BaseModel):
-    rows: List[Tool03ProductRowInput] = Field(..., description="商品情報のリスト")
+        productRows: List[Tool03ProductRowInput]
 
-# Định nghĩa cấu trúc dữ liệu cho response khi tạo job thành công
+    # --- Output Schemas ---
 class Tool03CreateJobResponse(BaseModel):
-    jobId: str = Field(..., description="生成されたジョブID")
-    status: str = Field(default="Pending", description="ジョブの初期ステータス")
-    totalItems: int = Field(..., description="処理対象のアイテム総数")
+        jobId: str
+        status: str = "Pending"
+        totalItems: int
+
+    # --- Schemas for Job Status ---
+class Tool03ImageResult(BaseModel):
+        """Kết quả xử lý cho một ảnh."""
+        status: str = Field(..., description="Trạng thái xử lý (Success, Error, Processing)")
+        filename: Optional[str] = Field(None, description="Tên file ảnh đã tạo (nếu thành công)")
+        message: Optional[str] = Field(None, description="Thông báo lỗi (nếu thất bại)")
+
+class Tool03JobStatusResponse(BaseModel):
+        """Thông tin trạng thái của Job."""
+        jobId: str
+        status: str = Field(..., description="Trạng thái tổng thể (Pending, Processing, Completed, Completed with errors, Failed)")
+        progress: int = Field(..., description="Số ảnh đã xử lý")
+        total: int = Field(..., description="Tổng số ảnh cần xử lý")
+        results: Dict[str, Tool03ImageResult] = Field(..., description="Kết quả chi tiết cho từng ảnh (key là row.id)")
+        startTime: float = Field(...)
+        endTime: Optional[float] = Field(None)
+        message: Optional[str] = Field(None, description="Thông báo lỗi chung (nếu Job Failed)") # Thêm message lỗi chung
+    
