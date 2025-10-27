@@ -1,0 +1,30 @@
+version: "3.9"
+
+services:
+  mariadb:
+    image: mariadb:10.11
+    container_name: empa-mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: empa_portal_v2
+      MARIADB_USER: empa
+      MARIADB_PASSWORD: empa_pass
+      MARIADB_CHARACTER_SET_SERVER: utf8mb4
+      MARIADB_COLLATION_SERVER: utf8mb4_general_ci
+    ports:
+      # Nếu cần tránh xung đột cổng, đổi 3306:3306 → 3307:3306 và sửa DB_PORT trong .env
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./mariadb_config:/etc/mysql/conf.d # mount CẢ THƯ MỤC cấu hình
+      - ./mariadb_init:/docker-entrypoint-initdb.d # script init (chỉ chạy khi volume trống)
+    healthcheck:
+      test:
+        ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -proot || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  db_data:

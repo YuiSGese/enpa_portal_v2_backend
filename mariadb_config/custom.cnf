@@ -1,0 +1,4 @@
+[mysqld]
+skip-name-resolve=1
+character-set-server=utf8mb4
+collation-server=utf8mb4_general_ci
