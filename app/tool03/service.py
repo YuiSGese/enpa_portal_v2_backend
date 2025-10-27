@@ -9,7 +9,7 @@ import asyncio
 from decimal import Decimal, ROUND_HALF_UP
 import time # Thêm time để lưu timestamp
 import tempfile
-import ftplib
+import ftplib # <<< IMPORT THÊM CHO FTP
 
 # Import schemas từ cùng thư mục (.)
 from .schemas import Tool03ProductRowInput, Tool03JobStatusResponse, Tool03ImageResult # Thêm schemas mới
@@ -22,7 +22,7 @@ JOB_STORAGE_BASE_DIR = Path(__file__).resolve().parent.parent.parent / "storage"
 JOB_STORAGE_BASE_DIR.mkdir(parents=True, exist_ok=True)
 
 # --- Nơi lưu trữ trạng thái Job (In-memory) ---
-# Cấu trúc: { job_id: {"status": str, "progress": int, "total": int, "results": Dict[str, Tool03ImageResult], "startTime": float, "endTime": float | None} }
+# Cấu trúc: { job_id: {"status": str, "progress": int, "total": int, "results": Dict[str, Tool03ImageResult], "startTime": float, "endTime": float | None, "message": str | None} }
 job_tracker: Dict[str, Dict[str, Any]] = {}
 # ----------------------------------------------
 
@@ -320,6 +320,8 @@ class BaseImageFactory:
 
 
 # --- Triển khai các Factory ---
+# (LƯU Ý: Giữ nguyên toàn bộ code của các class FactoryTypeA, B, C, D, E, F và các lớp con B2, C2, D2, E2, F2 ở đây)
+# --- NOTE: Keep all the code for FactoryTypeA, B, C, D, E, F and their subclasses B2, C2, D2, E2, F2 here ---
 class FactoryTypeA(BaseImageFactory):
     def __init__(self):
         super().__init__()
@@ -409,8 +411,7 @@ class FactoryTypeB(BaseImageFactory):
 factory_registry.register_factory('B', FactoryTypeB)
 
 class FactoryTypeB2(FactoryTypeB):
-    # Kế thừa init và _draw_details từ B, chỉ cần override _draw_mobile_details
-    pass # Không cần làm gì thêm ở đây vì BaseImageFactory đã có logic _draw_mobile_details mặc định
+    pass
 factory_registry.register_factory('B-2', FactoryTypeB2)
 
 class FactoryTypeC(BaseImageFactory):
@@ -512,14 +513,12 @@ class FactoryTypeE(BaseImageFactory):
             'unit':  {'text':'円','font_path':self.font_path_shippori_bold,'font_size':70,'font_color':self.SILVER,'dy':65},
             'suffix':{'text':'のところ','font_path':self.font_path_shippori_bold,'font_size':50,'font_color':self.SILVER,'dy':95}
         }
-        # --- SỬA LỖI LỆCH: Tăng y1 từ 600 lên 605 ---
         self.discount_params={ # Dùng _place_text riêng cho discount
             'font_path':self.font_path_shippori_bold,
             'font_color':self.GOLD,
             'x1': 645, 'y1': 620, 'x2': 965, 'y2': 670,
             'align':'center'
         }
-        # ----------------------------------------
         self.sale_price_group={
             'price': {'text':'','font_path':self.font_path_shippori_bold,'font_size':200,'font_color':self.GOLD,'x_origin':0,'x_end':self.width,'y_origin':650},
             'unit':  {'text':'円','font_path':self.font_path_shippori_bold,'font_size':70,'font_color':self.GOLD,'dy':145},
@@ -535,14 +534,13 @@ class FactoryTypeE(BaseImageFactory):
 
         # Xử lý hiển thị discount riêng cho template E
         discount_text_val = self._calculate_discount_display(row_data.regularPrice, row_data.salePrice, row_data.discountType)
-        # Ghép số và chữ OFF (hoặc 円OFF) lại thành một chuỗi duy nhất
         discount_display_text = ""
         if discount_text_val:
              discount_number = discount_text_val.replace('%', '').replace('円', '')
              if '%' in discount_text_val:
                  discount_display_text = f"{discount_number}%OFF"
              elif '円' in discount_text_val:
-                 discount_display_text = f"{discount_number}円OFF" # Giả sử luôn là OFF cho template này
+                 discount_display_text = f"{discount_number}円OFF"
 
         self._place_text(draw, {**self.discount_params, 'text': discount_display_text})
 
@@ -599,7 +597,7 @@ class FactoryTypeF2(FactoryTypeF):
 factory_registry.register_factory('F-2', FactoryTypeF2)
 
 
-# === Service chính (Background Task - Giữ nguyên logic cập nhật job_tracker) ===
+# === Service chính (Background Task - Đã sửa lỗi break) ===
 async def generate_images_background(job_id: str, product_rows: List[Tool03ProductRowInput]):
     """Tác vụ nền để tạo ảnh."""
     logger.info(f"[Job {job_id}] Bắt đầu xử lý {len(product_rows)} ảnh.")
@@ -612,13 +610,13 @@ async def generate_images_background(job_id: str, product_rows: List[Tool03Produ
     }
     job_tracker[job_id] = initial_job_data
     error_count = 0
+    final_status = "Processing" # Trạng thái cuối cùng của job
 
     try:
         for index, row in enumerate(product_rows):
             logger.debug(f"[Job {job_id}] Đang xử lý ảnh {index + 1}/{len(product_rows)}: {row.productCode}")
             row_id = row.id
             current_result = Tool03ImageResult(status="Processing", filename=None, message=None)
-            # Không cần lưu kết quả tạm thời ở đây nữa, sẽ lưu ở finally
 
             template_name = row.template or "テンプレートA" # Mặc định là A nếu rỗng
             base_key = template_name.replace("テンプレート", "") # Bỏ tiền tố
@@ -661,9 +659,9 @@ async def generate_images_background(job_id: str, product_rows: List[Tool03Produ
                     job_tracker[job_id]["progress"] = index + 1
                 else:
                     logger.warning(f"[Job {job_id}] Job không còn trong tracker khi xử lý xong row {index+1}")
-                    
-            #break 
-            await asyncio.sleep(0.01) # Tạm dừng nhỏ để tránh chiếm 100% CPU
+            return # Thoát hẳn khỏi function nếu job bị xóa
+
+        await asyncio.sleep(0.01) # Tạm dừng nhỏ
 
         # Chỉ cập nhật trạng thái cuối nếu job còn trong tracker
         if job_id in job_tracker:
@@ -682,6 +680,46 @@ async def generate_images_background(job_id: str, product_rows: List[Tool03Produ
             job_tracker[job_id]["status"] = final_status
             job_tracker[job_id]["endTime"] = end_time
             logger.info(f"[Job {job_id}] Thời gian xử lý: {end_time - start_time:.2f} giây.")
+
+# === Hàm lấy trạng thái Job (Giữ nguyên) ===
+def get_job_status(job_id: str) -> Optional[Dict[str, Any]]:
+    """Lấy thông tin trạng thái của job từ tracker."""
+    return job_tracker.get(job_id)
+
+# --- HÀM TẠO ZIP (Đã sửa lỗi thụt dòng và raise Exception) ---
+def create_job_zip_archive(job_id: str) -> Optional[str]:
+    """Tạo file zip từ thư mục ảnh của job và trả về đường dẫn file zip."""
+    job_dir = JOB_STORAGE_BASE_DIR / job_id
+    if not job_dir.is_dir():
+        logger.error(f"Thư mục job không tồn tại: {job_dir}")
+        raise FileNotFoundError("Job directory not found.")
+
+    # Tạo file zip trong thư mục tạm của hệ thống
+    temp_dir = tempfile.gettempdir()
+    zip_filename_base = f"tool03_images_{job_id}" # Tên file tạm thời, không phải tên download
+    zip_output_path_base = os.path.join(temp_dir, zip_filename_base)
+
+    try:
+        # Sử dụng shutil.make_archive để tạo zip
+        zip_path = shutil.make_archive(
+            base_name=zip_output_path_base, # Đường dẫn file zip tạm (không có đuôi .zip)
+            format='zip',                 # Định dạng nén
+            root_dir=str(job_dir)         # Thư mục gốc để nén (nội dung bên trong sẽ được nén)
+        )
+        logger.info(f"Đã tạo file zip thành công: {zip_path}")
+        return zip_path # Trả về đường dẫn đầy đủ của file zip tạm đã tạo
+    except Exception as e:
+        logger.error(f"Lỗi khi tạo file zip cho job {job_id}: {e}", exc_info=True)
+        # Dọn dẹp file zip nếu tạo lỗi (tùy chọn)
+        zip_file = f"{zip_output_path_base}.zip"
+        if os.path.exists(zip_file):
+            try:
+                 os.remove(zip_file)
+            except OSError as remove_e:
+                 logger.error(f"Không thể xóa file zip tạm bị lỗi: {zip_file}, lỗi: {remove_e}")
+        # Ném lại lỗi để controller xử lý thành 500
+        raise Exception("Failed to create zip file.") from e
+
 # === Tác vụ nền MỚI để tạo lại ảnh ===
 async def regenerate_specific_images_background(job_id: str, modified_rows: List[Tool03ProductRowInput]):
     """Tác vụ nền để tạo lại các ảnh cụ thể trong một job đã tồn tại."""
@@ -706,6 +744,7 @@ async def regenerate_specific_images_background(job_id: str, modified_rows: List
     current_job_data["endTime"] = None # Reset thời gian kết thúc
 
     local_error_count = 0 # Đếm lỗi chỉ trong lần chạy này
+    final_status = "Processing" # Trạng thái cuối cùng của job
 
     try:
         for row in modified_rows:
@@ -756,6 +795,9 @@ async def regenerate_specific_images_background(job_id: str, modified_rows: List
                  # Cập nhật kết quả cho ảnh này trong job_tracker
                  if job_id in job_tracker and row_id in job_tracker[job_id]["results"]:
                      job_tracker[job_id]["results"][row_id].update(current_result_update)
+                 elif job_id not in job_tracker:
+                     logger.warning(f"[Job {job_id}] Job không còn trong tracker khi xử lý xong TẠO LẠI row {row_id}")
+            return # Thoát nếu job bị xóa
 
             await asyncio.sleep(0.01)
 
@@ -765,10 +807,15 @@ async def regenerate_specific_images_background(job_id: str, modified_rows: List
         final_status = "Completed"
         has_errors = False
         if job_id in job_tracker: # Kiểm tra job còn không
+             # Đếm lại progress dựa trên các ảnh không còn Processing
+             completed_count = 0
              for res in job_tracker[job_id]["results"].values():
                   if res.get("status") == "Error":
                        has_errors = True
-                       break
+                  if res.get("status") != "Processing":
+                       completed_count += 1
+             job_tracker[job_id]["progress"] = completed_count # Cập nhật progress thực tế
+
              if has_errors:
                   final_status = "Completed with errors"
         else:
@@ -787,49 +834,91 @@ async def regenerate_specific_images_background(job_id: str, modified_rows: List
             end_time = time.time()
             job_tracker[job_id]["status"] = final_status
             job_tracker[job_id]["endTime"] = end_time
-# === Hàm lấy trạng thái Job (Giữ nguyên) ===
-def get_job_status(job_id: str) -> Optional[Dict[str, Any]]:
-    """Lấy thông tin trạng thái của job từ tracker."""
-    return job_tracker.get(job_id)
-# --- THÊM HÀM TẠO ZIP ---
-def create_job_zip_archive(job_id: str) -> Optional[str]:
-        """Tạo file zip từ thư mục ảnh của job và trả về đường dẫn file zip."""
-        job_dir = JOB_STORAGE_BASE_DIR / job_id
-        if not job_dir.is_dir():
-            logger.error(f"Thư mục job không tồn tại: {job_dir}")
-            raise FileNotFoundError("Job directory not found.")
 
-        # Kiểm tra trạng thái job (tùy chọn, có thể cho phép tải về ngay cả khi đang chạy)
-        job_status = job_tracker.get(job_id)
-        # if not job_status or job_status.get("status") not in ["Completed", "Completed with errors"]:
-        #     logger.warning(f"Attempted to download zip for incomplete job: {job_id}")
-        #     # Có thể raise lỗi hoặc cho phép tải về
-        #     # raise ValueError("Job is not completed yet.")
 
-        # Tạo file zip trong thư mục tạm của hệ thống
-        # Lưu ý: Thư mục tạm sẽ tự động bị xóa khi server restart hoặc theo cơ chế của OS
-        temp_dir = tempfile.gettempdir()
-        zip_filename_base = f"tool03_images_{job_id}"
-        zip_output_path_base = os.path.join(temp_dir, zip_filename_base)
+# === HÀM UPLOAD FTP ===
+def upload_job_images_to_ftp(job_id: str, target: str):
+    """
+    Tác vụ nền để upload ảnh của một job lên server FTP.
+    (Background task to upload a job's images to an FTP server.)
+    """
+    # --- Hardcode thông tin FTP (SỬA LẠI ĐƯỜNG DẪN NẾU CẦN) ---
+    ftp_configs = {
+        "gold": {
+            "host": "ftp.rakuten.ne.jp",
+            "port": 16910,
+            "user": "auc-ronnefeldt",
+            "password": "Ronne@04",
+            "remote_dir": "/public_html/tools/03/" # Sửa thành thư mục đúng trên GOLD
+        },
+        "rcabinet": {
+            # Thêm config cho R-Cabinet nếu cần
+        }
+    }
 
+    config = ftp_configs.get(target)
+    if not config:
+        logger.error(f"[Job {job_id}] Không tìm thấy cấu hình FTP cho target: {target}")
+        return
+
+    job_dir = JOB_STORAGE_BASE_DIR / job_id
+    if not job_dir.is_dir():
+        logger.error(f"[Job {job_id}] Thư mục job không tồn tại để upload: {job_dir}")
+        return
+
+    logger.info(f"[Job {job_id}] Bắt đầu upload lên FTP target '{target}' tại host {config['host']}.")
+
+    ftp = None
+    try:
+        ftp = ftplib.FTP()
+        ftp.connect(config['host'], config['port'], timeout=30)
+        ftp.login(config['user'], config['password'])
+        ftp.set_pasv(True)
+
+        logger.info(f"[Job {job_id}] Đang chuyển đến thư mục FTP: {config['remote_dir']}")
         try:
-            # Sử dụng shutil.make_archive để tạo zip
-            # format='zip', root_dir=str(job_dir) -> nén nội dung bên trong job_dir
-            zip_path = shutil.make_archive(
-                base_name=zip_output_path_base, # Đường dẫn file zip (không có đuôi .zip)
-                format='zip',                 # Định dạng nén
-                root_dir=str(job_dir)         # Thư mục gốc để nén (nội dung bên trong sẽ được nén)
-            )
-            logger.info(f"Đã tạo file zip thành công: {zip_path}")
-            return zip_path # Trả về đường dẫn đầy đủ của file zip đã tạo
-        except Exception as e:
-            logger.error(f"Lỗi khi tạo file zip cho job {job_id}: {e}", exc_info=True)
-            # Dọn dẹp file zip nếu tạo lỗi (tùy chọn)
-            zip_file = f"{zip_output_path_base}.zip"
-            if os.path.exists(zip_file):
-                os.remove(zip_file)
-            return None # Hoặc raise lỗi
-        
+             ftp.cwd(config['remote_dir'])
+        except ftplib.error_perm as e:
+             if "550" in str(e):
+                  try:
+                       logger.warning(f"[Job {job_id}] Thư mục {config['remote_dir']} không tồn tại, đang thử tạo...")
+                       ftp.mkd(config['remote_dir'])
+                       ftp.cwd(config['remote_dir'])
+                       logger.info(f"[Job {job_id}] Đã tạo và chuyển đến thư mục {config['remote_dir']}")
+                  except ftplib.all_errors as mkd_e:
+                       logger.error(f"[Job {job_id}] Không thể tạo hoặc chuyển đến thư mục {config['remote_dir']}: {mkd_e}", exc_info=True)
+                       raise
+             else:
+                  logger.error(f"[Job {job_id}] Lỗi quyền khi chuyển thư mục FTP: {e}", exc_info=True)
+                  raise
+
+        image_files = [f for f in os.listdir(job_dir) if f.lower().endswith('.jpg')]
+        successful_uploads = 0
+        for filename in image_files:
+            local_path = os.path.join(job_dir, filename)
+            remote_path = filename
+            try:
+                with open(local_path, 'rb') as file:
+                    ftp.storbinary(f'STOR {remote_path}', file)
+                    logger.info(f"[Job {job_id}] Đã upload thành công file: {filename}")
+                    successful_uploads += 1
+            except ftplib.all_errors as upload_e:
+                 logger.error(f"[Job {job_id}] Lỗi khi upload file {filename}: {upload_e}", exc_info=True)
+
+        logger.info(f"[Job {job_id}] Hoàn tất upload. Thành công: {successful_uploads}/{len(image_files)} file(s) lên {target}.")
+
+    except ftplib.all_errors as e:
+        logger.error(f"[Job {job_id}] Lỗi FTP khi upload tới {target}: {e}", exc_info=True)
+    except Exception as e:
+        logger.error(f"[Job {job_id}] Lỗi không xác định khi upload FTP: {e}", exc_info=True)
+    finally:
+        if ftp:
+            try:
+                ftp.quit()
+                logger.info(f"[Job {job_id}] Đã đóng kết nối FTP.")
+            except ftplib.all_errors as e:
+                logger.error(f"[Job {job_id}] Lỗi khi đóng kết nối FTP: {e}")
+
 # === Hàm dọn dẹp job cũ (Giữ nguyên) ===
 async def cleanup_old_jobs():
      """Xóa thông tin job và file ảnh cũ sau một khoảng thời gian."""
@@ -856,87 +945,7 @@ async def cleanup_old_jobs():
      await asyncio.sleep(600)
      # Tạo task mới thay vì gọi đệ quy trực tiếp để tránh stack overflow
      asyncio.create_task(cleanup_old_jobs())
-     
-def upload_job_images_to_ftp(job_id: str, target: str):
-    """
-    Tác vụ nền để upload ảnh của một job lên server FTP.
-    (Background task to upload a job's images to an FTP server.)
-    """
-    # --- 1. Hardcode thông tin FTP ---
-    # Trong thực tế, thông tin này sẽ được lấy từ database
-    # (In a real scenario, this info would be fetched from the database)
-    ftp_configs = {
-        "gold": {
-            "host": "ftp.rakuten.ne.jp",
-            "port": 16910,
-            "user": "auc-ronnefeldt",
-            "password": "Ronne@04",
-            "remote_dir": "/public_html/tools/3/" 
-        },
-        "rcabinet": {
-            # Thêm config cho R-Cabinet nếu cần
-            # (Add config for R-Cabinet if needed)
-        }
-    }
 
-    config = ftp_configs.get(target)
-    if not config:
-        logger.error(f"[Job {job_id}] Không tìm thấy cấu hình FTP cho target: {target}")
-        return
-
-    # --- 2. Lấy đường dẫn thư mục ảnh của job ---
-    # (Get the path to the job's image directory)
-    job_dir = JOB_STORAGE_BASE_DIR / job_id
-    if not job_dir.is_dir():
-        logger.error(f"[Job {job_id}] Thư mục job không tồn tại để upload: {job_dir}")
-        return
-
-    logger.info(f"[Job {job_id}] Bắt đầu upload lên FTP target '{target}' tại host {config['host']}.")
-    
-    ftp = None
-    try:
-        # --- 3. Kết nối và Upload ---
-        # (Connect and Upload)
-        ftp = ftplib.FTP()
-        ftp.connect(config['host'], config['port'])
-        ftp.login(config['user'], config['password'])
-
-        # Chuyển sang thư mục đích trên server FTP
-        # (Change to the destination directory on the FTP server)
-        logger.info(f"[Job {job_id}] Đang chuyển đến thư mục FTP: {config['remote_dir']}")
-        ftp.cwd(config['remote_dir'])
-
-        # Lấy danh sách file ảnh để upload
-        # (Get the list of image files to upload)
-        image_files = [f for f in os.listdir(job_dir) if f.lower().endswith('.jpg')]
-
-        for filename in image_files:
-            local_path = os.path.join(job_dir, filename)
-            with open(local_path, 'rb') as file:
-                # Bắt đầu upload
-                # (Start uploading)
-                ftp.storbinary(f'STOR {filename}', file)
-                logger.info(f"[Job {job_id}] Đã upload thành công file: {filename}")
-        
-        logger.info(f"[Job {job_id}] Hoàn tất upload {len(image_files)} file(s) lên {target}.")
-
-    except ftplib.all_errors as e:
-        logger.error(f"[Job {job_id}] Lỗi FTP khi upload tới {target}: {e}", exc_info=True)
-        # (Tùy chọn) Cập nhật trạng thái job là upload lỗi
-        # (Optional) Update job status to indicate upload failure
-
-    except Exception as e:
-        logger.error(f"[Job {job_id}] Lỗi không xác định khi upload FTP: {e}", exc_info=True)
-
-    finally:
-        # --- 4. Đóng kết nối ---
-        # (Close the connection)
-        if ftp:
-            try:
-                ftp.quit()
-                logger.info(f"[Job {job_id}] Đã đóng kết nối FTP.")
-            except ftplib.all_errors as e:
-                logger.error(f"[Job {job_id}] Lỗi khi đóng kết nối FTP: {e}")
 # --- Khởi chạy cleanup task khi ứng dụng khởi động (có thể đặt trong main.py) ---
 # @app.on_event("startup")
 # async def startup_event():

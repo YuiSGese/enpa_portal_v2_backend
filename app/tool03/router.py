@@ -98,7 +98,7 @@ async def download_images_zip(
     if not zip_path or not os.path.exists(zip_path):
         raise HTTPException(status_code=404, detail="Job not found or failed to create zip")
     # Tạo tên file zip trả về cho người dùng
-    download_filename = "img.zip"
+    download_filename = f"tool03_images_{job_id}.zip"
 
     # Sử dụng FileResponse để gửi file zip
     # background=BackgroundTask(os.remove, zip_path) # Tự động xóa file zip sau khi gửi (tùy chọn)
