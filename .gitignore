@@ -58,3 +58,17 @@ coverage.xml
 # --- Docker ---
 *.dockerignore
 docker-compose.override.yml
+# Node (nếu backend có package.json)
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# App runtime artifacts
+storage/
+tool03_jobs/
+uploads/
+media/
+generated/
+tmp/
+.tmp/
