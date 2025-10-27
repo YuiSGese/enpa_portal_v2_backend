@@ -1,52 +1,33 @@
-# app/core/database.py
-from __future__ import annotations
-from typing import Generator
-
+import os
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
-from sqlalchemy.engine import Engine
-from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.orm import sessionmaker, declarative_base
 
-from app.core.config import settings
+# Load .env
+load_dotenv()
 
+DB_USER = os.getenv("DB_USER")
+DB_PASS = os.getenv("DB_PASS")
+DB_HOST = os.getenv("DB_HOST")
+DB_PORT = os.getenv("DB_PORT")
+DB_NAME = os.getenv("DB_NAME")
+DB_ECHO = os.getenv("DB_ECHO", "false").lower() == "true"
+DB_POOL_SIZE = int(os.getenv("DB_POOL_SIZE", 5))
+DB_MAX_OVERFLOW = int(os.getenv("DB_MAX_OVERFLOW", 10))
+DB_POOL_RECYCLE = int(os.getenv("DB_POOL_RECYCLE", 3600))
+DB_ISOLATION_LEVEL = os.getenv("DB_ISOLATION_LEVEL", "READ COMMITTED")
 
-def _make_url() -> str:
-    """
-    Kết nối MariaDB qua TCP. Mặc định dùng mariadb-connector.
-    Nếu muốn dùng PyMySQL (fallback), đổi 'mariadb+mariadbconnector' → 'mysql+pymysql'.
-    """
-    return (
-        f"mariadb+mariadbconnector://{settings.DB_USER}:{settings.DB_PASS}"
-        f"@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
-    )
+DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-
-# Engine: KHÔNG truyền connect_args/unix_socket để tránh rẽ sang socket
-engine: Engine = create_engine(
-    _make_url(),
-    echo=bool(settings.DB_ECHO),
-    pool_pre_ping=True,
-    pool_recycle=settings.DB_POOL_RECYCLE,
-    pool_size=settings.DB_POOL_SIZE,
-    max_overflow=settings.DB_MAX_OVERFLOW,
-    isolation_level=settings.DB_ISOLATION_LEVEL,
+engine = create_engine(
+    DATABASE_URL,
+    echo=DB_ECHO,
+    pool_size=DB_POOL_SIZE,
+    max_overflow=DB_MAX_OVERFLOW,
+    pool_recycle=DB_POOL_RECYCLE,
+    isolation_level=DB_ISOLATION_LEVEL
 )
 
-# Session factory
-SessionLocal = sessionmaker(
-    bind=engine,
-    autocommit=False,
-    autoflush=False,
-    class_=Session,
-)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Declarative Base
-class Base(DeclarativeBase):
-    pass
-
-# FastAPI dependency
-def get_db() -> Generator[Session, None, None]:
-    db: Session = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+Base = declarative_base()

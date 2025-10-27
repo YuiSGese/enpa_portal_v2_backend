@@ -13,8 +13,7 @@ services:
       MARIADB_CHARACTER_SET_SERVER: utf8mb4
       MARIADB_COLLATION_SERVER: utf8mb4_general_ci
     ports:
-      # Nếu cần tránh xung đột cổng, đổi 3306:3306 → 3307:3306 và sửa DB_PORT trong .env
-      - "3306:3306"
+      - "3307:3306"
     volumes:
       - db_data:/var/lib/mysql
       - ./mariadb_config:/etc/mysql/conf.d # mount CẢ THƯ MỤC cấu hình

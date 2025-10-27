@@ -6,6 +6,24 @@ Tài liệu này giúp thành viên mới trong team hiểu rõ **cấu trúc d�
 - Giới thiệu cấu trúc module hóa gọn gàng (mỗi tool là một module độc lập)
 - Ví dụ quy trình khi tạo một công cụ (tool) mới
 
+## Getting Started
+
+1. create database from ORM:
+```bash
+python migrations/create_tables.py
+```
+---
+
+2. create database seeder (optional):
+```bash
+python migrations/seed_users.py
+```
+---
+
+3. run the development server:
+```bash
+uvicorn app.main:app --reload --port 8000
+```
 ---
 
 ## 🧱 1. Tổng quan dự án
