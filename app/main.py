@@ -1,6 +1,7 @@
 from fastapi import FastAPI
-from app.core.ValidationHandler import ValidationHandler
+from app.core.validation_handler import ValidationHandler
 from fastapi.exceptions import RequestValidationError
+from app.core.middleware import jwt_role_middleware
 
 # Import các router
 # from app.tool03.api import router as tool03_api_router # Router mới cho Tool 03
@@ -22,6 +23,9 @@ app.add_exception_handler(RequestValidationError, ValidationHandler)
 # app.include_router(tool03_api_router.router)
 app.include_router(test_router.router)
 app.include_router(login_router.router)
+                   
+# Thêm middleware
+app.middleware("http")(jwt_role_middleware)
 
 @app.get("/")
 async def root():

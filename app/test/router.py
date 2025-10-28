@@ -1,11 +1,8 @@
-
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Request
 from playwright.sync_api import sync_playwright
-from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.domain.repositories.user_repository import UserRepository
-from app.test.validate import UserCreate
-from app.core.bcrypt import get_password_hash
+from app.core.security import require_roles
 
 router = APIRouter(prefix="/test", tags=["test"])
 
@@ -25,24 +22,23 @@ def scrape_rakuten():
         return {"content_snippet": content[:500], "links_count": len(links), "links_sample": links[:10]}
     
 
-@router.get("/db")
-def get_users(db: Session = Depends(get_db)):
-    repo = UserRepository(db)
-    users = repo.get_all()
-    return {"status": "success", "data": [{"id": u.id, "name": u.name, "email": u.email} for u in users]}
+# @router.get("/db")
+# def get_users(db: Session = Depends(get_db)):
+#     repo = UserRepository(db)
+#     users = repo.get_all()
+#     return {"status": "success", "data": [{"id": u.id, "name": u.name, "email": u.email} for u in users]}
 
-@router.post("/db", response_model=dict)
-def create_user(user: UserCreate, db: Session = Depends(get_db)):
-    repo = UserRepository(db)
+# @router.post("/db", response_model=dict)
+# def create_user(user: UserCreate, db: Session = Depends(get_db)):
+#     repo = UserRepository(db)
 
-    if repo.get_by_email(user.email):
-        raise HTTPException(status_code=400, detail="Email đã tồn tại")
+#     if repo.get_by_email(user.email):
+#         raise HTTPException(status_code=400, detail="Email đã tồn tại")
 
-    new_user = repo.create(user.name, user.email, user.password)
-    return {"id": new_user.id, "name": new_user.name, "email": new_user.email}
+#     new_user = repo.create(user.name, user.email, user.password)
+#     return {"id": new_user.id, "name": new_user.name, "email": new_user.email}
 
-@router.get("/pass")
-def get_users(db: Session = Depends(get_db)):
-    
-    passwordHash = get_password_hash("khanh")
-    return {"pass": passwordHash}
+@router.get("/admin/dashboard")
+def admin_dashboard(request: Request, user=Depends(require_roles("ROLE_ADMIN"))):
+    user = request.state.user
+    return {"msg": f"Hello admin name: {user['user_name']} with role {user['role_name']}"}

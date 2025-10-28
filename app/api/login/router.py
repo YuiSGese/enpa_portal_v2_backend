@@ -2,9 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.domain.repositories.user_repository import UserRepository
+from app.domain.repositories.role_repository import RoleRepository
 from app.api.login.validate import LoginRequest, LoginResponse
 from app.core.bcrypt import verify_password
-from app.core.jwt import create_access_token
+from app.core.security import create_access_token
 from app.core.config import TOKEN_PREFIX
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -15,10 +16,14 @@ def login(login_data: LoginRequest, db: Session = Depends(get_db)):
     user = repo.get_by_username(login_data.username)
     
     if not user or not verify_password(login_data.password, user.password):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        raise HTTPException(status_code=400, detail="Invalid credentials")
+    
+    roleRepo = RoleRepository(db)
+    role = roleRepo.get_by_id(user.role_id)
 
-    access_token = create_access_token({"sub": str(user.id)})
+    token = create_access_token({"sub": str(user.id)}, user.user_name, role.role_name)
+    
     return {
-        "access_token": access_token,
-        "token_type": TOKEN_PREFIX
+        "access_token": TOKEN_PREFIX + token,
+        "user_name": user.user_name
     }
