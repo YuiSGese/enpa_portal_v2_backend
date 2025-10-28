@@ -7,136 +7,175 @@ from typing import List, Dict, Any, Optional
 from PIL import Image, ImageDraw, ImageFont
 import asyncio
 from decimal import Decimal, ROUND_HALF_UP
-import time # Thêm time để lưu timestamp
+import time
 import tempfile
-import ftplib # <<< IMPORT THÊM CHO FTP
+import ftplib
 
-# Import schemas từ cùng thư mục (.)
-from .schemas import Tool03ProductRowInput, Tool03JobStatusResponse, Tool03ImageResult # Thêm schemas mới
-# Import config và logger giữ nguyên
-from app.core.config import FONTS_DIR, TOOL03_TEMPLATES_DIR
+# 同一ディレクトリ (.) から schemas をインポート
+from .schemas import Tool03ProductRowInput, Tool03JobStatusResponse, Tool03ImageResult
+# logger のインポートは維持
 from app.core.logger import logger
 
-# Đường dẫn lưu trữ Job
-JOB_STORAGE_BASE_DIR = Path(__file__).resolve().parent.parent.parent / "storage" / "tool03_jobs"
+# --- パス解決ロジック ---
+# このファイルの場所 (app/tool03/service.py) に基づいてパスを計算
+SERVICE_FILE_PATH = Path(__file__).resolve()
+# APP_DIR は 'app' ディレクトリを指します (app/tool03/ -> app/)
+APP_DIR = SERVICE_FILE_PATH.parent.parent
+# PROJECT_ROOT はプロジェクトのルートディレクトリです
+PROJECT_ROOT = APP_DIR.parent
+
+# 共有の 'assets' ディレクトリを検索 (プロジェクトルート直下)
+ASSETS_DIR = PROJECT_ROOT / "assets"
+if not ASSETS_DIR.is_dir():
+    # 見つからない場合は、'app/assets' にフォールバック
+    ASSETS_DIR = APP_DIR / "assets"
+    if not ASSETS_DIR.is_dir():
+        # どちらの場所にも見つからない場合はエラーを発生
+        raise FileNotFoundError(
+            f"assets ディレクトリが見つかりません: {PROJECT_ROOT / 'assets'} または {APP_DIR / 'assets'}"
+        )
+
+# フォントディレクトリのパスを定義
+FONTS_DIR = ASSETS_DIR / "fonts"
+if not FONTS_DIR.is_dir():
+     raise FileNotFoundError(f"フォントディレクトリが見つかりません: {FONTS_DIR}")
+
+# Tool03 テンプレートディレクトリのパスを定義 (2つの可能性のある場所をチェック)
+TOOL03_TEMPLATES_DIR_OPTION1 = ASSETS_DIR / "tool03" / "templates"
+TOOL03_TEMPLATES_DIR_OPTION2 = APP_DIR / "tool03" / "assets" / "templates"
+
+if TOOL03_TEMPLATES_DIR_OPTION1.is_dir():
+    TOOL03_TEMPLATES_DIR = TOOL03_TEMPLATES_DIR_OPTION1
+elif TOOL03_TEMPLATES_DIR_OPTION2.is_dir():
+    TOOL03_TEMPLATES_DIR = TOOL03_TEMPLATES_DIR_OPTION2
+else:
+    raise FileNotFoundError(
+        f"Tool 03 テンプレートディレクトリが見つかりません: {TOOL03_TEMPLATES_DIR_OPTION1} または {TOOL03_TEMPLATES_DIR_OPTION2}"
+    )
+# --- パス解決ロジックの終わり ---
+
+
+# Jobストレージパス
+JOB_STORAGE_BASE_DIR = PROJECT_ROOT / "storage" / "tool03_jobs"
 JOB_STORAGE_BASE_DIR.mkdir(parents=True, exist_ok=True)
 
-# --- Nơi lưu trữ trạng thái Job (In-memory) ---
-# Cấu trúc: { job_id: {"status": str, "progress": int, "total": int, "results": Dict[str, Tool03ImageResult], "startTime": float, "endTime": float | None, "message": str | None} }
+# --- Jobステータスストレージ (インメモリ) ---
+# 構造: { job_id: {"status": str, "progress": int, "total": int, "results": Dict[str, Dict], "startTime": float, "endTime": float | None, "message": str | None, "ftpStatusGold": str, "ftpErrorGold": str|None, ...} }
 job_tracker: Dict[str, Dict[str, Any]] = {}
 # ----------------------------------------------
 
 
-# === Các hàm Helper (Giữ nguyên) ===
+# === ヘルパー関数 ===
 def calculate_font_size(text: str, font_path: str, box_width: int, box_height: int) -> int:
-    """Tính toán kích thước font tối đa để vừa với bounding box."""
+    """バウンディングボックスに収まる最大のフォントサイズを計算します。"""
     font_size = 1
-    max_font_size = box_height + 10 # Giới hạn trên để tránh vòng lặp vô hạn
+    max_font_size = box_height + 10 # 無限ループを避けるための上限
     try:
-        # Tăng dần font size cho đến khi vượt quá box
+        # ボックスを超えるまでフォントサイズを大きくする
         while font_size <= max_font_size:
             font = ImageFont.truetype(str(font_path), font_size)
-            # Lấy bounding box của text
-            bbox = font.getbbox(text) # (left, top, right, bottom) relative to (0,0)
+            # テキストのバウンディングボックスを取得
+            bbox = font.getbbox(text) # (left, top, right, bottom) (0,0)基準
             width = bbox[2] - bbox[0]
             height = bbox[3] - bbox[1]
 
             if width > box_width or height > box_height:
-                # Nếu vượt quá, trả về size trước đó (ít nhất là 1)
+                # 超過した場合は、直前のサイズ (最小1) を返す
                 return max(1, font_size - 1)
             font_size += 1
-        # Nếu không vượt quá ngay cả ở max_font_size, trả về max_font_size
+        # max_font_size でも超過しない場合は、max_font_size を返す
         return max(1, font_size - 1)
     except IOError:
-        logger.error(f"Không thể mở file font: {font_path}")
-        return 1 # Trả về size mặc định nhỏ
+        logger.error(f"フォントファイルを開けません: {font_path}")
+        return 1 # デフォルトの最小サイズを返す
     except Exception as e:
-        logger.error(f"Lỗi khi tính toán font size cho font '{font_path}': {e}")
-        return 1 # Trả về size mặc định nhỏ
+        logger.error(f"フォント '{font_path}' のサイズ計算中にエラー: {e}")
+        return 1 # デフォルトの最小サイズを返す
 
 
-# === Factory Pattern (Giữ nguyên các class Factory đã tạo) ===
+# === Factory Pattern ===
 
 class FactoryRegistry:
     def __init__(self):
-        self._factories: Dict[str, type] = {} # Lưu class, không phải instance
+        self._factories: Dict[str, type] = {} # インスタンスではなくクラスを保存
 
     def register_factory(self, key: str, factory_cls: type):
-        """Đăng ký một class Factory với một key."""
+        """Factory クラスをキーに登録します。"""
         if not issubclass(factory_cls, BaseImageFactory):
-            raise TypeError("factory_cls phải kế thừa từ BaseImageFactory")
+            raise TypeError("factory_cls は BaseImageFactory を継承する必要があります")
         self._factories[key] = factory_cls
-        logger.debug(f"Đã đăng ký Factory: {key} -> {factory_cls.__name__}")
+        logger.debug(f"Factory 登録済み: {key} -> {factory_cls.__name__}")
 
     def get_factory(self, key: str) -> 'BaseImageFactory':
-        """Lấy một instance của Factory dựa trên key."""
-        logger.debug(f"Đang tìm Factory cho key: '{key}'")
+        """キーに基づいて Factory のインスタンスを取得します。"""
+        logger.debug(f"キー '{key}' の Factory を検索中")
         factory_cls = self._factories.get(key)
 
-        # Nếu không tìm thấy key chính xác (ví dụ 'B-2'),
-        # thử tìm key cơ bản (ví dụ 'B')
+        # 正確なキー (例: 'B-2') が見つからない場合、
+        # 基本キー (例: 'B') を試行
         if not factory_cls:
             base_key = key.split('-')[0]
-            logger.debug(f"Không tìm thấy key '{key}', thử tìm key cơ bản: '{base_key}'")
+            logger.debug(f"キー '{key}' が見つかりません。基本キー '{base_key}' を試行します")
             factory_cls = self._factories.get(base_key)
 
-            # Nếu vẫn không tìm thấy key cơ bản
+            # 基本キーも見つからない場合
             if not factory_cls:
-                logger.error(f"Template Factory không tồn tại cho cả key '{key}' và base key '{base_key}'")
-                raise ValueError(f"Template Factory không tồn tại: {key}")
+                logger.error(f"キー '{key}' と基本キー '{base_key}' の両方に Template Factory が存在しません")
+                raise ValueError(f"Template Factory が存在しません: {key}")
 
-        logger.debug(f"Sử dụng Factory class: {factory_cls.__name__} cho key '{key}'")
-        # Tạo instance mới mỗi lần gọi
+        logger.debug(f"キー '{key}' に対して Factory クラス {factory_cls.__name__} を使用します")
+        # 毎回新しいインスタンスを生成
         return factory_cls()
 
 factory_registry = FactoryRegistry()
 
 class BaseImageFactory:
-    # --- Định nghĩa font và màu (Giữ nguyên) ---
+    # --- フォントと色の定義 ---
     def __init__(self):
         self.font_path_arial=FONTS_DIR/'ARIALNB.TTF';self.font_path_yugothB=FONTS_DIR/'YuGothB.ttc';self.font_path_noto_sans_black=FONTS_DIR/'NotoSansJP-Black.ttf';self.font_path_noto_sans_bold=FONTS_DIR/'NotoSansJP-Bold.ttf';self.font_path_noto_sans_medium=FONTS_DIR/'NotoSansJP-Medium.ttf';self.font_path_noto_serif_extrabold=FONTS_DIR/'NotoSerifJP-ExtraBold.ttf';self.font_path_reddit=FONTS_DIR/'RedditSans-ExtraBold.ttf';self.font_path_reddit_condensed_extrabold=FONTS_DIR/'RedditSansCondensed-ExtraBold.ttf';self.font_path_shippori_bold=FONTS_DIR/'ShipporiMinchoB1-Bold.ttf';self.font_path_public_sans_bold=FONTS_DIR/'PublicSans-Bold.ttf'
-        self.WHITE=(255,255,255);self.BLACK=(0,0,0);self.RED=(255,0,0) # Màu RED mặc định
-        self.width=800;self.height=800 # Kích thước mặc định
-        # Tham số mặc định cho ngày giờ mobile
+        self.WHITE=(255,255,255);self.BLACK=(0,0,0);self.RED=(255,0,0) # デフォルトのRED
+        self.width=800;self.height=800 # デフォルトサイズ
+        # モバイル日時用のデフォルトパラメータ
         self.mobile_start_datetime_params={'font_path':self.font_path_noto_sans_black,'font_color':self.WHITE,'x1':35,'y1':1250,'x2':475,'y2':1319,'align':'right'};
         self.mobile_end_datetime_params={'font_path':self.font_path_noto_sans_black,'font_color':self.WHITE,'x1':535,'y1':1250,'x2':975,'y2':1319,'align':'left'}
 
-    # --- Các hàm helper (Giữ nguyên) ---
+    # --- ヘルパー関数 ---
     def get_template_path(self, template_key: str, has_mobile_data: bool) -> Path:
-        base_key = template_key.split('-')[0] # Lấy key gốc (vd: 'B' từ 'B-2')
+        base_key = template_key.split('-')[0] # 元のキーを取得 (例: 'B-2' から 'B')
         template_file_name_base = f"template_{base_key}"
         suffix = ".jpg"
 
         mobile_template_path = TOOL03_TEMPLATES_DIR / f"{template_file_name_base}-2{suffix}"
         normal_template_path = TOOL03_TEMPLATES_DIR / f"{template_file_name_base}{suffix}"
 
-        # Ưu tiên template mobile nếu có dữ liệu mobile và file tồn tại
+        # モバイルデータがあり、ファイルが存在する場合はモバイルテンプレートを優先
         if has_mobile_data and mobile_template_path.exists():
-            logger.debug(f"Sử dụng template mobile: {mobile_template_path}")
+            logger.debug(f"モバイルテンプレートを使用: {mobile_template_path}")
             return mobile_template_path
 
-        # Nếu không, dùng template thường (phải tồn tại)
+        # それ以外の場合は通常テンプレートを使用 (存在必須)
         if not normal_template_path.exists():
-            logger.error(f"Template cơ bản không tồn tại: {normal_template_path}")
-            raise FileNotFoundError(f"Template cơ bản không tồn tại: {normal_template_path}")
+            logger.error(f"基本テンプレートが存在しません: {normal_template_path}")
+            raise FileNotFoundError(f"基本テンプレートが存在しません: {normal_template_path}")
 
-        logger.debug(f"Sử dụng template thường: {normal_template_path}")
+        logger.debug(f"通常テンプレートを使用: {normal_template_path}")
         return normal_template_path
 
     def _get_text_size(self, text: str, font: ImageFont.FreeTypeFont) -> tuple[int, int]:
         try:
             bbox = font.getbbox(text) # (left, top, right, bottom)
+            if bbox is None: return 0, 0 # フォントが None の bbox を返す場合を処理
             width = bbox[2] - bbox[0]
             height = bbox[3] - bbox[1]
             return width, height
         except Exception as e:
-            logger.error(f"Lỗi _get_text_size cho '{text}': {e}")
+            logger.error(f"'{text}' の _get_text_size でエラー: {e}")
             return 0, 0
 
     def _place_text(self, draw: ImageDraw, params: Dict[str, Any]):
         text = str(params.get('text', ''))
         if not text:
-            logger.warning("Attempted to place empty text.")
+            # logger.warning("空のテキストを配置しようとしました。") # 空テキストの警告をコメントアウト
             return
 
         font_path = str(params['font_path'])
@@ -147,72 +186,71 @@ class BaseImageFactory:
         box_height = y2 - y1
 
         if box_width <= 0 or box_height <= 0:
-            logger.warning(f"Invalid bounding box for text '{text}': ({x1},{y1})-({x2},{y2})")
+            logger.warning(f"テキスト '{text}' のバウンディングボックスが無効です: ({x1},{y1})-({x2},{y2})")
             return
 
         font_size = calculate_font_size(text, font_path, box_width, box_height)
         if font_size <= 0:
-             logger.warning(f"Calculated font size is zero or negative for text '{text}' in box ({x1},{y1})-({x2},{y2})")
-             return # Không vẽ nếu font size <= 0
+             logger.warning(f"テキスト '{text}' の計算済みフォントサイズが0以下です (ボックス: ({x1},{y1})-({x2},{y2}))")
+             return # フォントサイズが0以下の場合は描画しない
 
         try:
             font = ImageFont.truetype(font_path, font_size)
-            text_width, text_height_bbox = self._get_text_size(text, font) # Chiều cao dựa trên bbox
+            text_width, _ = self._get_text_size(text, font) # 幅を取得
 
-            # Tính toán vị trí x dựa trên align
+            # align に基づいて x 座標を計算
             if align == 'left':
                 x = x1
             elif align == 'center':
                 x = x1 + (box_width - text_width) / 2
             elif align == 'right':
                 x = x2 - text_width
-            else: # Mặc định là left
+            else: # デフォルトは left
                 x = x1
 
-            # Tính toán vị trí y để căn giữa theo chiều dọc trong box
-            # Lấy thông tin ascent/descent từ font để căn chuẩn hơn
-            bbox = font.getbbox(text) # (left, top, right, bottom) relative to baseline
-            text_actual_height = bbox[3] - bbox[1] # Chiều cao thực tế của ký tự
-            y_offset = bbox[1] # Độ lệch của top so với baseline (thường là số âm)
+            # ボックス内で垂直方向に中央揃えするために y 座標を計算
+            # フォントのアセント/ディセント情報を取得してより正確に中央揃え
+            bbox = font.getbbox(text) # ベースライン基準の (left, top, right, bottom)
+            if bbox is None: raise ValueError("フォントがテキスト配置用の None bbox を返しました")
+            text_actual_height = bbox[3] - bbox[1] # 文字の実際の高さ
+            y_offset = bbox[1] # ベースラインに対する top のオフセット (通常は負)
             y = y1 + (box_height - text_actual_height) / 2 - y_offset
 
-            # Vẽ text
+            # テキストを描画
             draw.text((x, y), text, fill=font_color, font=font)
         except Exception as e:
-            logger.error(f"Lỗi khi vẽ text '{text}' với font {font_path} size {font_size}: {e}", exc_info=True)
+            logger.error(f"テキスト '{text}' (フォント {font_path} サイズ {font_size}) の描画中にエラー: {e}", exc_info=True)
 
     def _format_price(self, price_str: Optional[str]) -> str:
         if price_str is None: return ""
         try:
-            # Làm tròn về số nguyên gần nhất trước khi format
+            # フォーマットする前に最も近い整数に丸める
             price_decimal = Decimal(price_str).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
-            return f"{int(price_decimal):,}" # Format với dấu phẩy
+            return f"{int(price_decimal):,}" # カンマ区切りでフォーマット
         except Exception:
-            return str(price_str) # Trả về chuỗi gốc nếu không phải số
+            return str(price_str) # 数値でない場合は元の文字列を返す
 
     def _calculate_discount_display(self, regular_price_str: Optional[str], sale_price_str: Optional[str], discount_type: Optional[str]) -> str:
         if regular_price_str is None or sale_price_str is None: return ""
         try:
             regular_price = Decimal(regular_price_str)
             sale_price = Decimal(sale_price_str)
-            if regular_price <= sale_price: return "" # Không hiển thị nếu giá sale >= giá gốc
+            if regular_price <= 0 or regular_price <= sale_price: return "" # regular_price > 0 かつセール価格が通常価格より安い場合のみ表示
 
             difference = regular_price - sale_price
 
             if discount_type == "yen":
-                # Làm tròn về số nguyên gần nhất
+                # 最も近い整数に丸める
                 discount_val = difference.quantize(Decimal('1'), rounding=ROUND_HALF_UP)
-                return f"{int(discount_val):,}" # Format số tiền
-            elif discount_type == "percent":
-                 # Tính phần trăm, làm tròn về số nguyên gần nhất
+                return f"{int(discount_val):,}円"
+            # yen 以外、または未指定の場合はパーセントとして扱う
+            else: # discount_type == "percent" or discount_type is None or discount_type == ""
+                 # パーセンテージを計算し、最も近い整数に丸める
                 percentage = (difference / regular_price * 100).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
-                return f"{int(percentage)}%" # Thêm ký tự %
-            else: # Mặc định là percent nếu không rõ
-                 percentage = (difference / regular_price * 100).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
-                 return f"{int(percentage)}%"
+                return f"{int(percentage)}%" # % 記号を追加
 
         except Exception as e:
-            logger.warning(f"Lỗi tính discount ({regular_price_str}, {sale_price_str}, {discount_type}): {e}")
+            logger.warning(f"割引計算エラー ({regular_price_str}, {sale_price_str}, {discount_type}): {e}")
             return ""
 
     def _place_price_group(self, draw: ImageDraw, price_params: Dict, unit_params: Dict, suffix_params: Dict):
@@ -220,118 +258,116 @@ class BaseImageFactory:
         unit_text = str(unit_params.get('text', ''))
         suffix_text = str(suffix_params.get('text', ''))
 
-        if not price_text: return # Không vẽ nếu không có giá
+        if not price_text: return # 価格がない場合は描画しない
 
-        gap_width = 5 # Khoảng cách giữa các phần tử
+        gap_width = 5 # 要素間のギャップ
 
         try:
             price_font = ImageFont.truetype(str(price_params['font_path']), price_params['font_size'])
             unit_font = ImageFont.truetype(str(unit_params['font_path']), unit_params['font_size']) if unit_text else None
             suffix_font = ImageFont.truetype(str(suffix_params['font_path']), suffix_params['font_size']) if suffix_text else None
 
-            price_w, price_h = self._get_text_size(price_text, price_font)
-            unit_w, unit_h = self._get_text_size(unit_text, unit_font) if unit_font else (0, 0)
-            suffix_w, suffix_h = self._get_text_size(suffix_text, suffix_font) if suffix_font else (0, 0)
+            price_w, _ = self._get_text_size(price_text, price_font)
+            unit_w, _ = self._get_text_size(unit_text, unit_font) if unit_font else (0, 0)
+            suffix_w, _ = self._get_text_size(suffix_text, suffix_font) if suffix_font else (0, 0)
 
-            # Tính tổng chiều rộng của cả nhóm
+            # グループ全体の合計幅を計算
             total_width = price_w
             if unit_text: total_width += gap_width + unit_w
             if suffix_text: total_width += gap_width + suffix_w
 
-            # Tính vị trí bắt đầu (x) để căn giữa nhóm trong container
+            # コンテナ内でグループを中央揃えするための開始 x 座標を計算
             container_width = price_params['x_end'] - price_params['x_origin']
             start_x = price_params['x_origin'] + (container_width - total_width) / 2
 
-            # --- Vẽ giá ---
+            # --- 価格を描画 ---
             price_y = price_params['y_origin']
             draw.text((start_x, price_y), price_text, fill=price_params['font_color'], font=price_font)
-            current_x = start_x + price_w # Cập nhật vị trí x hiện tại
+            current_x = start_x + price_w # 現在の x 座標を更新
 
-            # --- Vẽ đơn vị (nếu có) ---
+            # --- 単位を描画 (存在する場合) ---
             if unit_font:
-                current_x += gap_width # Thêm khoảng cách
-                unit_y = price_y + unit_params.get('dy', 0) # Áp dụng độ lệch y (nếu có)
+                current_x += gap_width # ギャップを追加
+                unit_y = price_y + unit_params.get('dy', 0) # y オフセットを適用 (存在する場合)
                 draw.text((current_x, unit_y), unit_text, fill=unit_params['font_color'], font=unit_font)
-                current_x += unit_w # Cập nhật vị trí x
+                current_x += unit_w # x 座標を更新
 
-            # --- Vẽ hậu tố (suffix) (nếu có) ---
+            # --- 接尾辞 (suffix) を描画 (存在する場合) ---
             if suffix_font:
-                current_x += gap_width # Thêm khoảng cách
-                suffix_y = price_y + suffix_params.get('dy', 0) # Áp dụng độ lệch y (nếu có)
+                current_x += gap_width # ギャップを追加
+                suffix_y = price_y + suffix_params.get('dy', 0) # y オフセットを適用 (存在する場合)
                 draw.text((current_x, suffix_y), suffix_text, fill=suffix_params['font_color'], font=suffix_font)
 
         except Exception as e:
-            logger.error(f"Lỗi _place_price_group cho giá '{price_text}': {e}", exc_info=True)
+            logger.error(f"価格 '{price_text}' の _place_price_group でエラー: {e}", exc_info=True)
 
 
     def draw(self, row_data: Tool03ProductRowInput, template_key: str) -> Image.Image:
-        """Vẽ ảnh dựa trên dữ liệu hàng và template key."""
+        """行データとテンプレートキーに基づいて画像を描画します。"""
         has_mobile_data = bool(row_data.mobileStartDate and row_data.mobileEndDate)
+        original_height = self.height # 元の高さを保存
         try:
             template_path = self.get_template_path(template_key, has_mobile_data)
 
-            # Cập nhật chiều cao nếu là template mobile và file tồn tại
+            # モバイルテンプレートでファイルが存在し、_draw_mobile_details がある場合、高さを更新
             if has_mobile_data and template_path.name.endswith("-2.jpg") and hasattr(self, '_draw_mobile_details'):
-                # Giả định chiều cao mobile là 1370 dựa trên V1
-                original_height = self.height
+                # V1 に基づき、モバイルの高さを 1370 と仮定
                 self.height = 1370
-                logger.debug(f"Tạm thời đặt height = 1370 cho mobile template {template_path.name}")
-
+                logger.debug(f"モバイルテンプレート {template_path.name} のため、一時的に高さを 1370 に設定")
 
             img = Image.open(template_path).convert("RGB")
             draw_obj = ImageDraw.Draw(img)
 
-            # Vẽ các chi tiết chính
+            # メインの詳細を描画
             self._draw_details(draw_obj, row_data)
 
-            # Vẽ thêm chi tiết mobile nếu cần
+            # 必要に応じてモバイルの詳細を追加描画
             if has_mobile_data and hasattr(self, '_draw_mobile_details') and callable(getattr(self, '_draw_mobile_details')):
-                 # Kiểm tra lại xem có nên gọi không nếu template thường được dùng
+                 # 実際にモバイルテンプレートを使用している場合のみ呼び出す
                  if template_path.name.endswith("-2.jpg"):
-                     logger.debug(f"Gọi _draw_mobile_details cho {template_key}")
+                     logger.debug(f"{template_key} の _draw_mobile_details を呼び出し")
                      self._draw_mobile_details(draw_obj, row_data)
                  else:
-                     logger.warning(f"Có dữ liệu mobile nhưng không tìm thấy template mobile cho {template_key}, bỏ qua vẽ mobile details.")
-
-             # Khôi phục chiều cao gốc nếu đã thay đổi
-            if 'original_height' in locals():
-                self.height = original_height
+                     logger.warning(f"モバイルデータはありますが、{template_key} のモバイルテンプレートが見つからないため、モバイル詳細はスキップします。")
 
             return img
 
         except FileNotFoundError:
-            logger.error(f"Không tìm thấy file template cho key '{template_key}', mobile: {has_mobile_data}")
-            raise # Ném lại lỗi để generate_images_background bắt
+            logger.error(f"テンプレートキー '{template_key}' (モバイル: {has_mobile_data}) のテンプレートファイルが見つかりません")
+            raise # エラーを再スローし、generate_images_background でキャッチ
         except Exception as e:
-            logger.error(f"Lỗi không xác định khi vẽ ảnh cho template key '{template_key}': {e}", exc_info=True)
-            raise # Ném lại lỗi
+            logger.error(f"テンプレートキー '{template_key}' の画像描画中に不明なエラー: {e}", exc_info=True)
+            raise # エラーを再スロー
+        finally:
+            self.height = original_height # 元の高さを復元
 
-    # --- Các hàm cần được implement bởi lớp con ---
+    # --- サブクラスで実装が必要な関数 ---
     def _draw_details(self, draw: ImageDraw, row_data: Tool03ProductRowInput):
-        """Vẽ các chi tiết chính lên ảnh (bắt buộc implement)."""
+        """画像にメインの詳細を描画します (実装必須)。"""
         raise NotImplementedError
 
     def _draw_mobile_details(self, draw: ImageDraw, row_data: Tool03ProductRowInput):
-        """Vẽ thêm các chi tiết cho Rakuten Mobile (tùy chọn implement)."""
-        # Lớp con nào hỗ trợ mobile sẽ override hàm này
-        logger.debug(f"Gọi _draw_mobile_details mặc định cho {self.__class__.__name__}")
-        self._place_text(draw, {**self.mobile_start_datetime_params, 'text': row_data.mobileStartDate})
-        self._place_text(draw, {**self.mobile_end_datetime_params, 'text': row_data.mobileEndDate})
+        """楽天モバイル用の追加詳細を描画します (実装は任意)。"""
+        # モバイルをサポートするサブクラスがこの関数をオーバーライド
+        logger.debug(f"{self.__class__.__name__} のデフォルト _draw_mobile_details を呼び出し")
+        # データがある場合のみ描画
+        if row_data.mobileStartDate:
+            self._place_text(draw, {**self.mobile_start_datetime_params, 'text': row_data.mobileStartDate})
+        if row_data.mobileEndDate:
+            self._place_text(draw, {**self.mobile_end_datetime_params, 'text': row_data.mobileEndDate})
 
 
-# --- Triển khai các Factory ---
-# (LƯU Ý: Giữ nguyên toàn bộ code của các class FactoryTypeA, B, C, D, E, F và các lớp con B2, C2, D2, E2, F2 ở đây)
-# --- NOTE: Keep all the code for FactoryTypeA, B, C, D, E, F and their subclasses B2, C2, D2, E2, F2 here ---
+# --- Factory の実装 (A, B, B2, C, C2, ... のクラスコードは変更なし) ---
 class FactoryTypeA(BaseImageFactory):
     def __init__(self):
         super().__init__()
         self.width, self.height = 800, 880
-        self.RED = (189, 41, 39) # Override màu RED
-        # --- Định nghĩa params cho các element ---
+        self.RED = (189, 41, 39) # RED の色をオーバーライド
+        # --- 要素のパラメータを定義 ---
         self.start_datetime_params={'font_path':self.font_path_noto_sans_black,'font_color':self.BLACK,'x1':270,'y1':70,'x2':771,'y2':135,'align':'center'}
         self.end_datetime_params={'font_path':self.font_path_noto_sans_black,'font_color':self.BLACK,'x1':270,'y1':180,'x2':771,'y2':245,'align':'center'}
         self.message_params={'font_path':self.font_path_noto_sans_black,'font_color':self.RED,'x1':30,'y1':280,'x2':770,'y2':370,'align':'center'}
-        # --- Định nghĩa các nhóm giá ---
+        # --- 価格グループを定義 ---
         self.normal_price_group={
             'price': {'text':'', 'font_path':self.font_path_public_sans_bold,'font_size':60,'font_color':self.WHITE,'x_origin':330,'x_end':740,'y_origin':395},
             'unit':  {'text':'円', 'font_path':self.font_path_noto_sans_black, 'font_size':30,'font_color':self.WHITE,'dy':20},
@@ -339,7 +375,7 @@ class FactoryTypeA(BaseImageFactory):
         }
         self.discount_group={
              'price': {'text':'', 'font_path':self.font_path_public_sans_bold,'font_size':85,'font_color':self.BLACK,'x_origin':0,'x_end':self.width,'y_origin':485},
-             'unit':  {'text':'', 'font_path':self.font_path_noto_sans_black, 'font_size':50,'font_color':self.BLACK,'dy':20}, # Đơn vị sẽ là % hoặc 円
+             'unit':  {'text':'', 'font_path':self.font_path_noto_sans_black, 'font_size':50,'font_color':self.BLACK,'dy':20}, # 単位は % または 円
              'suffix':{'text':'OFF','font_path':self.font_path_noto_sans_black,'font_size':30,'font_color':self.BLACK,'dy':45}
         }
         self.sale_price_group={
@@ -348,24 +384,24 @@ class FactoryTypeA(BaseImageFactory):
             'suffix':{'text':'税込','font_path':self.font_path_noto_sans_black,'font_size':20,'font_color':self.RED,'dy':70}
         }
     def _draw_details(self, draw: ImageDraw, row_data: Tool03ProductRowInput):
-        # Vẽ ngày giờ và message
+        # 日時とメッセージを描画
         self._place_text(draw, {**self.start_datetime_params, 'text': row_data.startDate})
         self._place_text(draw, {**self.end_datetime_params, 'text': row_data.endDate})
-        self._place_text(draw, {**self.message_params, 'text': row_data.saleText or ""}) # Đảm bảo không phải None
+        self._place_text(draw, {**self.message_params, 'text': row_data.saleText or ""}) # None でないことを保証
 
-        # Chuẩn bị dữ liệu giá
+        # 価格データを準備
         self.normal_price_group['price']['text'] = self._format_price(row_data.regularPrice)
         self.sale_price_group['price']['text'] = self._format_price(row_data.salePrice)
 
-        # Chuẩn bị dữ liệu discount
+        # 割引データを準備
         discount_text_val = self._calculate_discount_display(row_data.regularPrice, row_data.salePrice, row_data.discountType)
-        # Tách số và đơn vị (%)
+        # 数値と単位 (%) を分離
         discount_number = discount_text_val.replace('%', '').replace('円', '')
         discount_unit_text = '%' if '%' in discount_text_val else '円' if '円' in discount_text_val else ''
         self.discount_group['price']['text'] = discount_number
         self.discount_group['unit']['text'] = discount_unit_text
 
-        # Vẽ các nhóm giá
+        # 価格グループを描画
         self._place_price_group(draw, self.normal_price_group['price'], self.normal_price_group['unit'], self.normal_price_group['suffix'])
         self._place_price_group(draw, self.discount_group['price'], self.discount_group['unit'], self.discount_group['suffix'])
         self._place_price_group(draw, self.sale_price_group['price'], self.sale_price_group['unit'], self.sale_price_group['suffix'])
@@ -513,7 +549,7 @@ class FactoryTypeE(BaseImageFactory):
             'unit':  {'text':'円','font_path':self.font_path_shippori_bold,'font_size':70,'font_color':self.SILVER,'dy':65},
             'suffix':{'text':'のところ','font_path':self.font_path_shippori_bold,'font_size':50,'font_color':self.SILVER,'dy':95}
         }
-        self.discount_params={ # Dùng _place_text riêng cho discount
+        self.discount_params={ # 割引は _place_text で別途配置
             'font_path':self.font_path_shippori_bold,
             'font_color':self.GOLD,
             'x1': 645, 'y1': 620, 'x2': 965, 'y2': 670,
@@ -532,19 +568,19 @@ class FactoryTypeE(BaseImageFactory):
         self.normal_price_group['price']['text'] = self._format_price(row_data.regularPrice)
         self.sale_price_group['price']['text'] = self._format_price(row_data.salePrice)
 
-        # Xử lý hiển thị discount riêng cho template E
+        # テンプレート E 固有の割引表示を処理
         discount_text_val = self._calculate_discount_display(row_data.regularPrice, row_data.salePrice, row_data.discountType)
         discount_display_text = ""
         if discount_text_val:
-             discount_number = discount_text_val.replace('%', '').replace('円', '')
-             if '%' in discount_text_val:
-                 discount_display_text = f"{discount_number}%OFF"
-             elif '円' in discount_text_val:
-                 discount_display_text = f"{discount_number}円OFF"
+         discount_number = discount_text_val.replace('%', '').replace('円', '')
+         if '%' in discount_text_val:
+             discount_display_text = f"{discount_number}%OFF"
+         elif '円' in discount_text_val: # この条件が true になる
+             discount_display_text = f"{discount_number}円OFF" # "xxxx円OFF" の文字列を作成
 
-        self._place_text(draw, {**self.discount_params, 'text': discount_display_text})
+        self._place_text(draw, {**self.discount_params, 'text': discount_display_text}) # 作成した文字列を描画
 
-        # Vẽ các nhóm giá còn lại
+        # 残りの価格グループを描画
         self._place_price_group(draw, self.normal_price_group['price'], self.normal_price_group['unit'], self.normal_price_group['suffix'])
         self._place_price_group(draw, self.sale_price_group['price'], self.sale_price_group['unit'], self.sale_price_group['suffix'])
 factory_registry.register_factory('E', FactoryTypeE)
@@ -596,170 +632,203 @@ class FactoryTypeF2(FactoryTypeF):
     pass
 factory_registry.register_factory('F-2', FactoryTypeF2)
 
-
-# === Service chính (Background Task - Đã sửa lỗi break) ===
+# === メインサービス (バックグラウンドタスク - POST) ===
 async def generate_images_background(job_id: str, product_rows: List[Tool03ProductRowInput]):
-    """Tác vụ nền để tạo ảnh."""
-    logger.info(f"[Job {job_id}] Bắt đầu xử lý {len(product_rows)} ảnh.")
+    """新規ジョブのために画像を生成するバックグラウンドタスク。"""
+    logger.info(f"[Job {job_id}] {len(product_rows)} 件の画像の処理を開始します。")
     job_dir = JOB_STORAGE_BASE_DIR / job_id
     job_dir.mkdir(exist_ok=True)
     start_time = time.time()
-    initial_job_data = {
+    # FTP フィールドを含む完全な構造で job_tracker を初期化
+    initial_job_data: Dict[str, Any] = {
         "status": "Processing", "progress": 0, "total": len(product_rows),
-        "results": {}, "startTime": start_time, "endTime": None, "message": None
+        "results": {}, "startTime": start_time, "endTime": None, "message": None,
+        "ftpUploadStatusGold": "idle", "ftpUploadErrorGold": None,
+        "ftpUploadStatusRcabinet": "idle", "ftpUploadErrorRcabinet": None,
     }
     job_tracker[job_id] = initial_job_data
     error_count = 0
-    final_status = "Processing" # Trạng thái cuối cùng của job
+    final_status = "Processing" # ジョブの最終ステータス
 
     try:
         for index, row in enumerate(product_rows):
-            logger.debug(f"[Job {job_id}] Đang xử lý ảnh {index + 1}/{len(product_rows)}: {row.productCode}")
+            logger.debug(f"[Job {job_id}] 画像 {index + 1}/{len(product_rows)} を処理中: {row.productCode}")
             row_id = row.id
-            current_result = Tool03ImageResult(status="Processing", filename=None, message=None)
+            # 処理前にこの行の結果を Pending として初期化
+            current_result_dict = Tool03ImageResult(status="Pending").model_dump()
+            if job_id in job_tracker:
+                 job_tracker[job_id]["results"][row_id] = current_result_dict
+            else:
+                 logger.warning(f"[Job {job_id}] 行 {index+1} の開始前に Job がトラッカーに存在しません")
+                 return # ジョブが削除された場合は早期に終了
 
-            template_name = row.template or "テンプレートA" # Mặc định là A nếu rỗng
-            base_key = template_name.replace("テンプレート", "") # Bỏ tiền tố
-            factory_key = base_key # Key mặc định
+            template_name = row.template or "テンプレートA" # 空の場合は A をデフォルトに
+            base_key = template_name.replace("テンプレート", "") # プレフィックスを削除
+            factory_key = base_key # デフォルトキー
             has_mobile_data = bool(row.mobileStartDate and row.mobileEndDate)
             potential_mobile_key = f"{base_key}-2"
 
             if has_mobile_data and potential_mobile_key in factory_registry._factories:
-                factory_key = potential_mobile_key # Ưu tiên key mobile
+                factory_key = potential_mobile_key # モバイルキーを優先
 
-            logger.debug(f"[Job {job_id}] Processing row {index+1}:")
-            logger.debug(f"  - Received template name: '{row.template}'")
-            logger.debug(f"  - Calculated base_key: '{base_key}'")
-            logger.debug(f"  - Final factory_key: '{factory_key}'")
+            logger.debug(f"[Job {job_id}] 行 {index+1} を処理中:")
+            logger.debug(f"  - 受信テンプレート名: '{row.template}'")
+            logger.debug(f"  - 計算された base_key: '{base_key}'")
+            logger.debug(f"  - 最終 factory_key: '{factory_key}'")
 
             try:
-                factory = factory_registry.get_factory(factory_key)
-                img: Image.Image = factory.draw(row, factory_key) # Truyền factory_key vào draw
-                output_filename = f"{row.productCode}.jpg"
-                output_path = job_dir / output_filename
-                img.save(output_path, "JPEG", quality=95)
-                current_result.status = "Success"
-                current_result.filename = output_filename
-                img.close()
+                 # 描画直前にステータスを Processing に更新
+                 current_result_dict["status"] = "Processing"
+                 # トラッカーに再更新 (ジョブが存在する場合)
+                 if job_id in job_tracker:
+                      job_tracker[job_id]["results"][row_id] = current_result_dict
+
+                 factory = factory_registry.get_factory(factory_key)
+                 img: Image.Image = factory.draw(row, factory_key) # factory_key を draw に渡す
+                 output_filename = f"{row.productCode}.jpg"
+                 output_path = job_dir / output_filename
+                 img.save(output_path, "JPEG", quality=95)
+                 current_result_dict["status"] = "Success"
+                 current_result_dict["filename"] = output_filename
+                 img.close()
 
             except (FileNotFoundError, ValueError, NotImplementedError) as e:
-                logger.error(f"[Job {job_id}] Lỗi xử lý ảnh {index + 1} ({row.productCode}, template '{factory_key}'): {e}")
-                current_result.status = "Error"
-                current_result.message = str(e)
+                logger.error(f"[Job {job_id}] 画像 {index + 1} ({row.productCode}, テンプレート '{factory_key}') の処理エラー: {e}")
+                current_result_dict["status"] = "Error"
+                current_result_dict["message"] = str(e)
                 error_count += 1
             except Exception as draw_error:
-                logger.error(f"[Job {job_id}] Lỗi không xác định khi vẽ ảnh {index + 1} ({row.productCode}, template '{factory_key}'): {draw_error}", exc_info=True)
-                current_result.status = "Error"
-                current_result.message = "Lỗi không xác định khi vẽ ảnh."
+                logger.error(f"[Job {job_id}] 画像 {index + 1} ({row.productCode}, テンプレート '{factory_key}') の描画中に不明なエラー: {draw_error}", exc_info=True)
+                current_result_dict["status"] = "Error"
+                current_result_dict["message"] = "画像描画中に不明なエラーが発生しました。"
                 error_count += 1
             finally:
-                # Lưu kết quả cuối cùng của row (dạng dict) và cập nhật progress
-                if job_id in job_tracker: # Kiểm tra job còn tồn tại
-                    job_tracker[job_id]["results"][row_id] = current_result.model_dump()
-                    job_tracker[job_id]["progress"] = index + 1
+                # 行の最終結果を保存し、進捗を更新
+                if job_id in job_tracker: # ジョブが存在するか確認
+                    job_tracker[job_id]["results"][row_id] = current_result_dict
+                    # 画像処理が完了 (Success/Error) したら進捗を増やす
+                    job_tracker[job_id]["progress"] = len([
+                         res for res in job_tracker[job_id]["results"].values()
+                         if res.get("status") in ["Success", "Error"]
+                    ])
                 else:
-                    logger.warning(f"[Job {job_id}] Job không còn trong tracker khi xử lý xong row {index+1}")
-            return # Thoát hẳn khỏi function nếu job bị xóa
+                    logger.warning(f"[Job {job_id}] 行 {index+1} の処理完了時に Job がトラッカーに存在しません")
+            
 
-        await asyncio.sleep(0.01) # Tạm dừng nhỏ
+            # CPU を過度に占有しないよう、わずかに待機
+            await asyncio.sleep(0.01)
 
-        # Chỉ cập nhật trạng thái cuối nếu job còn trong tracker
+        # ジョブがトラッカーに残っている場合のみ最終ステータスを更新
         if job_id in job_tracker:
             final_status = "Completed" if error_count == 0 else "Completed with errors"
-            logger.info(f"[Job {job_id}] Hoàn thành xử lý. Status: {final_status}. Lỗi: {error_count}/{len(product_rows)}.")
+            logger.info(f"[Job {job_id}] 処理完了。ステータス: {final_status}。エラー: {error_count}/{len(product_rows)}。")
 
     except Exception as e:
         final_status = "Failed"
-        logger.error(f"[Job {job_id}] Gặp lỗi nghiêm trọng trong background task: {e}", exc_info=True)
+        logger.error(f"[Job {job_id}] バックグラウンドタスクで重大なエラーが発生: {e}", exc_info=True)
         if job_id in job_tracker:
-             job_tracker[job_id]["message"] = f"Lỗi hệ thống: {e}" # Gán lỗi chung
+             job_tracker[job_id]["message"] = f"システムエラー: {e}" # 共通エラーを割り当て
     finally:
-        # Cập nhật trạng thái cuối cùng và thời gian kết thúc nếu job còn
+        # ジョブが残っている場合、最終ステータスと終了時刻を更新
         if job_id in job_tracker:
             end_time = time.time()
             job_tracker[job_id]["status"] = final_status
             job_tracker[job_id]["endTime"] = end_time
-            logger.info(f"[Job {job_id}] Thời gian xử lý: {end_time - start_time:.2f} giây.")
+            logger.info(f"[Job {job_id}] 処理時間: {end_time - start_time:.2f} 秒。")
 
-# === Hàm lấy trạng thái Job (Giữ nguyên) ===
+# === Job ステータス取得関数 ===
 def get_job_status(job_id: str) -> Optional[Dict[str, Any]]:
-    """Lấy thông tin trạng thái của job từ tracker."""
+    """トラッカーからジョブのステータス情報を取得します。"""
+    # 意図しない変更を避けるためコピーを返す
     return job_tracker.get(job_id)
 
-# --- HÀM TẠO ZIP (Đã sửa lỗi thụt dòng và raise Exception) ---
+# --- ZIP 作成関数 ---
 def create_job_zip_archive(job_id: str) -> Optional[str]:
-    """Tạo file zip từ thư mục ảnh của job và trả về đường dẫn file zip."""
+    """ジョブの画像ディレクトリから Zip ファイルを作成し、Zip ファイルのパスを返します。"""
     job_dir = JOB_STORAGE_BASE_DIR / job_id
     if not job_dir.is_dir():
-        logger.error(f"Thư mục job không tồn tại: {job_dir}")
-        raise FileNotFoundError("Job directory not found.")
+        logger.error(f"Job ディレクトリが存在しません: {job_dir}")
+        raise FileNotFoundError("Job ディレクトリが見つかりません。")
 
-    # Tạo file zip trong thư mục tạm của hệ thống
     temp_dir = tempfile.gettempdir()
-    zip_filename_base = f"tool03_images_{job_id}" # Tên file tạm thời, không phải tên download
+    zip_filename_base = f"tool03_images_{job_id}"
     zip_output_path_base = os.path.join(temp_dir, zip_filename_base)
 
     try:
-        # Sử dụng shutil.make_archive để tạo zip
         zip_path = shutil.make_archive(
-            base_name=zip_output_path_base, # Đường dẫn file zip tạm (không có đuôi .zip)
-            format='zip',                 # Định dạng nén
-            root_dir=str(job_dir)         # Thư mục gốc để nén (nội dung bên trong sẽ được nén)
+            base_name=zip_output_path_base,
+            format='zip',
+            root_dir=str(job_dir)
         )
-        logger.info(f"Đã tạo file zip thành công: {zip_path}")
-        return zip_path # Trả về đường dẫn đầy đủ của file zip tạm đã tạo
+        logger.info(f"Zip ファイルの作成に成功: {zip_path}")
+        return zip_path
     except Exception as e:
-        logger.error(f"Lỗi khi tạo file zip cho job {job_id}: {e}", exc_info=True)
-        # Dọn dẹp file zip nếu tạo lỗi (tùy chọn)
+        logger.error(f"Job {job_id} の Zip ファイル作成中にエラー: {e}", exc_info=True)
         zip_file = f"{zip_output_path_base}.zip"
         if os.path.exists(zip_file):
-            try:
-                 os.remove(zip_file)
-            except OSError as remove_e:
-                 logger.error(f"Không thể xóa file zip tạm bị lỗi: {zip_file}, lỗi: {remove_e}")
-        # Ném lại lỗi để controller xử lý thành 500
-        raise Exception("Failed to create zip file.") from e
+            try: os.remove(zip_file)
+            except OSError as remove_e: logger.error(f"エラーが発生した一時 Zip ファイルを削除できません: {zip_file}, エラー: {remove_e}")
+        raise Exception("Zip ファイルの作成に失敗しました。") from e
 
-# === Tác vụ nền MỚI để tạo lại ảnh ===
+# === 画像再生成バックグラウンドタスク (PATCH) ===
 async def regenerate_specific_images_background(job_id: str, modified_rows: List[Tool03ProductRowInput]):
-    """Tác vụ nền để tạo lại các ảnh cụ thể trong một job đã tồn tại."""
-    logger.info(f"[Job {job_id}] Bắt đầu TẠO LẠI {len(modified_rows)} ảnh.")
+    """ジョブに特定の画像を再生成または追加するバックグラウンドタスク。"""
+    logger.info(f"[Job {job_id}] {len(modified_rows)} 件の画像の再生成/追加を開始します。")
 
-    # Lấy trạng thái job hiện tại
+    # 現在のジョブステータスを取得 (コントローラーで存在チェック済みのはず)
     current_job_data = job_tracker.get(job_id)
     if not current_job_data:
-        logger.error(f"[Job {job_id}] Không tìm thấy job để tạo lại ảnh.")
+        logger.error(f"[Job {job_id}] 画像再生成のための Job が見つかりません (ロジックエラー?)。")
         return
 
     job_dir = JOB_STORAGE_BASE_DIR / job_id
     if not job_dir.is_dir():
-         logger.error(f"[Job {job_id}] Thư mục job không tồn tại: {job_dir}")
+         logger.error(f"[Job {job_id}] Job ディレクトリが存在しません: {job_dir}")
          current_job_data["status"] = "Failed"
-         current_job_data["message"] = "Thư mục lưu trữ ảnh bị mất."
+         current_job_data["message"] = "画像ストレージディレクトリが失われました。"
          return
 
-    # Cập nhật trạng thái job thành Processing (nếu cần)
-    current_job_data["status"] = "Processing"
-    current_job_data["message"] = None # Xóa lỗi cũ nếu có
-    current_job_data["endTime"] = None # Reset thời gian kết thúc
+    # --- 新規行がある場合は total を更新 ---
+    current_total = current_job_data.get("total", 0)
+    new_rows_count = 0
+    for row in modified_rows:
+        if row.id not in current_job_data["results"]:
+            new_rows_count += 1
+            # 新規行を results に Pending ステータスで即時追加
+            current_job_data["results"][row.id] = Tool03ImageResult(status="Pending").model_dump()
 
-    local_error_count = 0 # Đếm lỗi chỉ trong lần chạy này
-    final_status = "Processing" # Trạng thái cuối cùng của job
+    if new_rows_count > 0:
+        updated_total = len(current_job_data["results"]) # results 内の実際の合計数
+        current_job_data["total"] = updated_total # total を更新
+        logger.info(f"[Job {job_id}] {new_rows_count} 件の新規行を検出。total を {updated_total} に更新しました。")
+    # ------------------------------------
+
+    # ジョブステータスを Processing に更新し、古いエラーをクリア、endTime をリセット
+    current_job_data["status"] = "Processing"
+    current_job_data["message"] = None
+    current_job_data["endTime"] = None
+    # 画像が変更される可能性があるため、FTP ステータスもリセット
+    current_job_data["ftpUploadStatusGold"] = "idle"
+    current_job_data["ftpUploadErrorGold"] = None
+    current_job_data["ftpUploadStatusRcabinet"] = "idle"
+    current_job_data["ftpUploadErrorRcabinet"] = None
+
+
+    final_status = "Processing" # デフォルトの最終ステータス
 
     try:
-        for row in modified_rows:
+        for index, row in enumerate(modified_rows):
             row_id = row.id
-            logger.debug(f"[Job {job_id}] Đang TẠO LẠI ảnh cho row ID: {row_id} ({row.productCode})")
+            logger.debug(f"[Job {job_id}] 画像 {index + 1}/{len(modified_rows)} を再生成/追加中 (Row ID: {row_id}, {row.productCode})")
 
-            # Cập nhật trạng thái của ảnh này thành Processing
-            if row_id in current_job_data["results"]:
-                current_job_data["results"][row_id]["status"] = "Processing"
-                current_job_data["results"][row_id]["message"] = None
-            else:
-                 # Nếu row ID này chưa từng tồn tại (khó xảy ra nếu frontend gửi đúng)
-                 current_job_data["results"][row_id] = Tool03ImageResult(status="Processing").model_dump()
+            # この行の結果辞書を取得または作成
+            current_result_dict = current_job_data["results"].get(row_id, Tool03ImageResult(status="Pending").model_dump())
+            # ステータスを Processing に更新
+            current_result_dict["status"] = "Processing"
+            current_result_dict["message"] = None # 古いエラーをクリア
+            current_result_dict["filename"] = None # 古いファイル名をクリア (もしあれば)
+            current_job_data["results"][row_id] = current_result_dict # トラッカーに更新
 
-            # Logic tạo ảnh giống như hàm generate_images_background
             template_name = row.template or "テンプレートA"
             base_key = template_name.replace("テンプレート", "")
             factory_key = base_key
@@ -768,105 +837,137 @@ async def regenerate_specific_images_background(job_id: str, modified_rows: List
             if has_mobile_data and potential_mobile_key in factory_registry._factories:
                 factory_key = potential_mobile_key
 
-            current_result_update = {"status": "Processing"} # Dùng dict để cập nhật
-
             try:
                 factory = factory_registry.get_factory(factory_key)
                 img: Image.Image = factory.draw(row, factory_key)
                 output_filename = f"{row.productCode}.jpg"
                 output_path = job_dir / output_filename
-                img.save(output_path, "JPEG", quality=95) # Ghi đè file cũ
-                current_result_update["status"] = "Success"
-                current_result_update["filename"] = output_filename
-                current_result_update["message"] = None
+                img.save(output_path, "JPEG", quality=95) # 古いファイルを上書き
+                current_result_dict["status"] = "Success"
+                current_result_dict["filename"] = output_filename
                 img.close()
 
             except (FileNotFoundError, ValueError, NotImplementedError) as e:
-                logger.error(f"[Job {job_id}] Lỗi TẠO LẠI ảnh ({row.productCode}, template '{factory_key}'): {e}")
-                current_result_update["status"] = "Error"
-                current_result_update["message"] = str(e)
-                local_error_count += 1
+                logger.error(f"[Job {job_id}] 画像の再生成/追加エラー ({row.productCode}, テンプレート '{factory_key}'): {e}")
+                current_result_dict["status"] = "Error"
+                current_result_dict["message"] = str(e)
             except Exception as draw_error:
-                logger.error(f"[Job {job_id}] Lỗi không xác định khi TẠO LẠI ảnh ({row.productCode}, template '{factory_key}'): {draw_error}", exc_info=True)
-                current_result_update["status"] = "Error"
-                current_result_update["message"] = "Lỗi không xác định khi vẽ ảnh."
-                local_error_count += 1
+                logger.error(f"[Job {job_id}] 画像の再生成/追加中に不明なエラー ({row.productCode}, テンプレート '{factory_key}'): {draw_error}", exc_info=True)
+                current_result_dict["status"] = "Error"
+                current_result_dict["message"] = "画像描画中に不明なエラーが発生しました。"
             finally:
-                 # Cập nhật kết quả cho ảnh này trong job_tracker
-                 if job_id in job_tracker and row_id in job_tracker[job_id]["results"]:
-                     job_tracker[job_id]["results"][row_id].update(current_result_update)
-                 elif job_id not in job_tracker:
-                     logger.warning(f"[Job {job_id}] Job không còn trong tracker khi xử lý xong TẠO LẠI row {row_id}")
-            return # Thoát nếu job bị xóa
+                 # 最終結果をトラッカーに更新 (ジョブが存在する場合)
+                 if job_id in job_tracker:
+                     job_tracker[job_id]["results"][row_id] = current_result_dict
+                     # 処理完了 (Success/Error) ごとに進捗を更新
+                     job_tracker[job_id]["progress"] = len([
+                          res for res in job_tracker[job_id]["results"].values()
+                          if res.get("status") in ["Success", "Error"]
+                     ])
+                 else:
+                     logger.warning(f"[Job {job_id}] 再生成 Row {row_id} の処理完了時に Job がトラッカーに存在しません")
+            
 
             await asyncio.sleep(0.01)
 
-        # --- Xác định trạng thái cuối cùng sau khi tạo lại ---
-        # Kiểm tra xem còn ảnh nào đang Processing không (có thể do lỗi từ trước hoặc job bị cancel)
-        # Hoặc kiểm tra xem có ảnh nào bị Error không (bao gồm cả lỗi mới và lỗi cũ)
-        final_status = "Completed"
-        has_errors = False
-        if job_id in job_tracker: # Kiểm tra job còn không
-             # Đếm lại progress dựa trên các ảnh không còn Processing
+        # --- 要求された行の処理後の最終ステータスを決定 ---
+        if job_id in job_tracker:
+             # *すべて* の results を再度カウントし、進捗とエラーを確認
              completed_count = 0
-             for res in job_tracker[job_id]["results"].values():
-                  if res.get("status") == "Error":
+             has_errors = False
+             for res_dict in job_tracker[job_id]["results"].values():
+                  res = Tool03ImageResult(**res_dict) # 構造が正しいことを確認するために再パース
+                  if res.status == "Error":
                        has_errors = True
-                  if res.get("status") != "Processing":
-                       completed_count += 1
-             job_tracker[job_id]["progress"] = completed_count # Cập nhật progress thực tế
+                  # 処理が完了 (Success または Error) した場合のみ進捗としてカウント
+                  if res.status in ["Success", "Error"]:
+                      completed_count += 1
 
-             if has_errors:
-                  final_status = "Completed with errors"
+             # 最終的な正確な進捗を更新
+             job_tracker[job_id]["progress"] = completed_count
+             current_total = job_tracker[job_id]["total"] # 最新の total を取得
+
+             # すべてが処理完了 (progress == total) した場合のみ最終ステータスを設定
+             if completed_count == current_total:
+                 if has_errors:
+                      final_status = "Completed with errors"
+                 else:
+                      final_status = "Completed"
+                 logger.info(f"[Job {job_id}] 画像の再生成/追加完了。最終ステータス: {final_status}。進捗: {completed_count}/{current_total}。")
+             else:
+                  # まだ完了していない場合は、Processing 状態を維持
+                  final_status = "Processing"
+                  logger.debug(f"[Job {job_id}] ジョブはまだ処理中です。進捗: {completed_count}/{current_total}")
         else:
-             final_status = "Failed" # Job đã bị xóa?
-
-        logger.info(f"[Job {job_id}] Hoàn thành TẠO LẠI ảnh. Status mới: {final_status}. Lỗi trong lần chạy này: {local_error_count}/{len(modified_rows)}.")
+             final_status = "Failed" # ジョブが削除された
 
     except Exception as e:
-        final_status = "Failed" # Lỗi nghiêm trọng trong quá trình tạo lại
-        logger.error(f"[Job {job_id}] Gặp lỗi nghiêm trọng khi TẠO LẠI ảnh: {e}", exc_info=True)
+        final_status = "Failed"
+        logger.error(f"[Job {job_id}] 画像の再生成/追加中に重大なエラーが発生: {e}", exc_info=True)
         if job_id in job_tracker:
-            job_tracker[job_id]["message"] = f"Lỗi hệ thống khi tạo lại ảnh: {e}"
+            job_tracker[job_id]["message"] = f"画像の再生成/追加中にシステムエラー: {e}"
     finally:
-        # Cập nhật trạng thái cuối cùng và thời gian kết thúc nếu job còn
-        if job_id in job_tracker:
+        # ジョブが *実際に* 終了した場合のみ、最終ステータスと endTime を更新
+        if job_id in job_tracker and final_status != "Processing":
             end_time = time.time()
             job_tracker[job_id]["status"] = final_status
             job_tracker[job_id]["endTime"] = end_time
 
 
-# === HÀM UPLOAD FTP ===
+# === FTP アップロード関数 ===
 def upload_job_images_to_ftp(job_id: str, target: str):
     """
-    Tác vụ nền để upload ảnh của một job lên server FTP.
-    (Background task to upload a job's images to an FTP server.)
+    ジョブの画像を FTP サーバーにアップロードするバックグラウンドタスク。
     """
-    # --- Hardcode thông tin FTP (SỬA LẠI ĐƯỜNG DẪN NẾU CẦN) ---
+    # --- FTP 設定 ---
     ftp_configs = {
         "gold": {
-            "host": "ftp.rakuten.ne.jp",
-            "port": 16910,
-            "user": "auc-ronnefeldt",
-            "password": "Ronne@04",
-            "remote_dir": "/public_html/tools/03/" # Sửa thành thư mục đúng trên GOLD
+            "host": "ftp.rakuten.ne.jp", "port": 16910, "user": "auc-ronnefeldt",
+            "password": "Ronne@04", "remote_dir": "/public_html/tools/03/"
         },
         "rcabinet": {
-            # Thêm config cho R-Cabinet nếu cần
+            # R-Cabinet 用の設定をここに追加
+             "host": "upload.rakuten.ne.jp", "port": 16910, "user": "auc-ronnefeldt", # 例: 要確認
+             "password": "Ronne@04", "remote_dir": "/images/" # 例: 要確認
         }
     }
 
     config = ftp_configs.get(target)
     if not config:
-        logger.error(f"[Job {job_id}] Không tìm thấy cấu hình FTP cho target: {target}")
+        logger.error(f"[Job {job_id}] ターゲット '{target}' の FTP 設定が見つかりません")
+        # トラッカーにエラーステータスを更新
+        if job_id in job_tracker:
+            ftp_status_key = f"ftpUploadStatus{target.capitalize()}"
+            ftp_error_key = f"ftpUploadError{target.capitalize()}"
+            job_tracker[job_id][ftp_status_key] = "failed"
+            job_tracker[job_id][ftp_error_key] = f"FTP 設定 '{target}' が見つかりません。"
         return
 
     job_dir = JOB_STORAGE_BASE_DIR / job_id
     if not job_dir.is_dir():
-        logger.error(f"[Job {job_id}] Thư mục job không tồn tại để upload: {job_dir}")
+        logger.error(f"[Job {job_id}] アップロード対象の Job ディレクトリが存在しません: {job_dir}")
+        if job_id in job_tracker:
+            ftp_status_key = f"ftpUploadStatus{target.capitalize()}"
+            ftp_error_key = f"ftpUploadError{target.capitalize()}"
+            job_tracker[job_id][ftp_status_key] = "failed"
+            job_tracker[job_id][ftp_error_key] = "画像を含むディレクトリが存在しません。"
         return
 
-    logger.info(f"[Job {job_id}] Bắt đầu upload lên FTP target '{target}' tại host {config['host']}.")
+    logger.info(f"[Job {job_id}] FTP ターゲット '{target}' (ホスト: {config['host']}) へのアップロードを開始します。")
+
+    # --- job_tracker に "uploading" ステータスを更新 ---
+    ftp_status_key = f"ftpUploadStatus{target.capitalize()}"
+    ftp_error_key = f"ftpUploadError{target.capitalize()}"
+    upload_status = "failed" # デフォルトは failed
+    upload_error_msg = None
+
+    if job_id in job_tracker:
+         job_tracker[job_id][ftp_status_key] = "uploading"
+         job_tracker[job_id][ftp_error_key] = None # 古いエラーをクリア
+    else:
+         logger.warning(f"[Job {job_id}] FTP アップロード開始時に Job がトラッカーに存在しません。")
+         return # ジョブが削除された場合は終了
+    # ----------------------------------------------------
 
     ftp = None
     try:
@@ -875,81 +976,124 @@ def upload_job_images_to_ftp(job_id: str, target: str):
         ftp.login(config['user'], config['password'])
         ftp.set_pasv(True)
 
-        logger.info(f"[Job {job_id}] Đang chuyển đến thư mục FTP: {config['remote_dir']}")
+        logger.info(f"[Job {job_id}] FTP ディレクトリに移動中: {config['remote_dir']}")
         try:
              ftp.cwd(config['remote_dir'])
         except ftplib.error_perm as e:
-             if "550" in str(e):
+             if "550" in str(e): # ディレクトリが存在しないエラー
                   try:
-                       logger.warning(f"[Job {job_id}] Thư mục {config['remote_dir']} không tồn tại, đang thử tạo...")
-                       ftp.mkd(config['remote_dir'])
-                       ftp.cwd(config['remote_dir'])
-                       logger.info(f"[Job {job_id}] Đã tạo và chuyển đến thư mục {config['remote_dir']}")
+                       logger.warning(f"[Job {job_id}] ディレクトリ {config['remote_dir']} が存在しません。作成を試みます...")
+                       # パスを分割し、必要に応じて各部分を作成 (より安全)
+                       parts = Path(config['remote_dir']).parts
+                       current_dir = "/"
+                       for part in parts:
+                           if not part or part == "/": continue
+                           current_dir = os.path.join(current_dir, part) # 安全のため os.path.join を使用
+                           try:
+                               ftp.mkd(current_dir)
+                               logger.debug(f"[Job {job_id}] FTP ディレクトリを作成しました: {current_dir}")
+                           except ftplib.error_perm as mkd_e:
+                               if "550" not in str(mkd_e): # ディレクトリが既に存在する場合のエラーは無視
+                                   raise # その他のエラーは再スロー
+                       ftp.cwd(config['remote_dir']) # 作成後に再度 cwd を試行
+                       logger.info(f"[Job {job_id}] ディレクトリを作成し、{config['remote_dir']} に移動しました")
                   except ftplib.all_errors as mkd_e:
-                       logger.error(f"[Job {job_id}] Không thể tạo hoặc chuyển đến thư mục {config['remote_dir']}: {mkd_e}", exc_info=True)
-                       raise
+                       upload_error_msg = f"FTP ディレクトリ '{config['remote_dir']}' の作成/移動に失敗しました: {mkd_e}"
+                       logger.error(f"[Job {job_id}] {upload_error_msg}", exc_info=True)
+                       raise # finally に入り、トラッカーを更新するためにエラーをスロー
              else:
-                  logger.error(f"[Job {job_id}] Lỗi quyền khi chuyển thư mục FTP: {e}", exc_info=True)
+                  upload_error_msg = f"FTP ディレクトリ '{config['remote_dir']}' へのアクセス権エラー: {e}"
+                  logger.error(f"[Job {job_id}] {upload_error_msg}", exc_info=True)
                   raise
 
-        image_files = [f for f in os.listdir(job_dir) if f.lower().endswith('.jpg')]
+        # 正常に生成された画像ファイルのみを取得
+        image_files_to_upload = []
+        if job_id in job_tracker and "results" in job_tracker[job_id]:
+             for result_data in job_tracker[job_id]["results"].values():
+                 res = Tool03ImageResult(**result_data)
+                 if res.status == "Success" and res.filename and (job_dir / res.filename).is_file():
+                     image_files_to_upload.append(res.filename)
+
         successful_uploads = 0
-        for filename in image_files:
-            local_path = os.path.join(job_dir, filename)
-            remote_path = filename
+        total_to_upload = len(image_files_to_upload)
+        upload_errors = []
+
+        if not image_files_to_upload:
+             logger.warning(f"[Job {job_id}] {target} にアップロードする正常な画像がありません。")
+             upload_status = "success" # アップロード対象がない場合は成功とみなす
+
+        for filename in image_files_to_upload:
+            local_path = job_dir / filename
+            remote_path = filename # ファイル名を維持
             try:
                 with open(local_path, 'rb') as file:
                     ftp.storbinary(f'STOR {remote_path}', file)
-                    logger.info(f"[Job {job_id}] Đã upload thành công file: {filename}")
+                    logger.info(f"[Job {job_id}] ファイルのアップロードに成功: {filename} -> {target}")
                     successful_uploads += 1
             except ftplib.all_errors as upload_e:
-                 logger.error(f"[Job {job_id}] Lỗi khi upload file {filename}: {upload_e}", exc_info=True)
+                 err_msg = f"ファイル {filename} のアップロードエラー: {upload_e}"
+                 logger.error(f"[Job {job_id}] {err_msg}", exc_info=True)
+                 upload_errors.append(err_msg)
 
-        logger.info(f"[Job {job_id}] Hoàn tất upload. Thành công: {successful_uploads}/{len(image_files)} file(s) lên {target}.")
+        if successful_uploads == total_to_upload:
+             upload_status = "success"
+             logger.info(f"[Job {job_id}] アップロード完了。成功: {successful_uploads}/{total_to_upload} ファイル (ターゲット: {target})。")
+        else:
+             upload_status = "failed"
+             upload_error_msg = f"{total_to_upload - successful_uploads}/{total_to_upload} ファイルのアップロードに失敗しました。"
+             if upload_errors:
+                 upload_error_msg += f" エラー例: {upload_errors[0]}" # 最初のエラーのみ取得
+             logger.error(f"[Job {job_id}] {upload_error_msg}")
+
 
     except ftplib.all_errors as e:
-        logger.error(f"[Job {job_id}] Lỗi FTP khi upload tới {target}: {e}", exc_info=True)
+        upload_error_msg = f"FTP 接続/認証エラー ({target}): {e}"
+        logger.error(f"[Job {job_id}] {upload_error_msg}", exc_info=True)
     except Exception as e:
-        logger.error(f"[Job {job_id}] Lỗi không xác định khi upload FTP: {e}", exc_info=True)
+        upload_error_msg = f"FTP アップロード中に不明なエラー ({target}): {e}"
+        logger.error(f"[Job {job_id}] {upload_error_msg}", exc_info=True)
     finally:
         if ftp:
-            try:
-                ftp.quit()
-                logger.info(f"[Job {job_id}] Đã đóng kết nối FTP.")
-            except ftplib.all_errors as e:
-                logger.error(f"[Job {job_id}] Lỗi khi đóng kết nối FTP: {e}")
+            try: ftp.quit()
+            except ftplib.all_errors: pass # quit 中のエラーは無視
 
-# === Hàm dọn dẹp job cũ (Giữ nguyên) ===
+        # --- 最終ステータスを job_tracker に更新 ---
+        if job_id in job_tracker:
+            job_tracker[job_id][ftp_status_key] = upload_status
+            job_tracker[job_id][ftp_error_key] = upload_error_msg
+            logger.info(f"[Job {job_id}] FTP ステータス '{target}' を '{upload_status}' に更新しました。")
+        # ----------------------------------------------------
+
+# === 古いジョブのクリーンアップ関数 ===
 async def cleanup_old_jobs():
-     """Xóa thông tin job và file ảnh cũ sau một khoảng thời gian."""
+     """一定時間経過した古いジョブ情報と画像ファイルを削除します。"""
      current_time = time.time()
-     timeout = 3600 # 1 giờ = 3600 giây
+     timeout = 3600 # 1 時間 = 3600 秒
      jobs_to_delete = [
-          job_id for job_id, data in job_tracker.items()
+          job_id for job_id, data in list(job_tracker.items()) # イテレーション中の辞書変更エラーを避けるため list() を使用
           if current_time - (data.get("endTime") or data.get("startTime", 0)) > timeout
      ]
 
      if jobs_to_delete:
-          logger.info(f"Chuẩn bị dọn dẹp {len(jobs_to_delete)} job(s) cũ.")
+          logger.info(f"{len(jobs_to_delete)} 件の古いジョブのクリーンアップを準備中。")
           for job_id in jobs_to_delete:
-               logger.info(f"Dọn dẹp job cũ: {job_id}")
+               logger.info(f"古いジョブをクリーンアップ中: {job_id}")
                try:
-                    if job_id in job_tracker: del job_tracker[job_id]
+                    job_tracker.pop(job_id, None) # トラッカーから削除
                     job_dir = JOB_STORAGE_BASE_DIR / job_id
                     if job_dir.exists():
-                         shutil.rmtree(job_dir)
+                         shutil.rmtree(job_dir) # ジョブディレクトリを削除
                except Exception as e:
-                    logger.error(f"Lỗi khi dọn dẹp job {job_id}: {e}")
+                    logger.error(f"Job {job_id} のクリーンアップ中にエラー: {e}")
 
-     # Lên lịch chạy lại sau 10 phút
+     # 10分後に再実行をスケジュール (時間は調整可能)
      await asyncio.sleep(600)
-     # Tạo task mới thay vì gọi đệ quy trực tiếp để tránh stack overflow
+     # 直接の再帰呼び出しの代わりに新しいタスクを作成
      asyncio.create_task(cleanup_old_jobs())
 
-# --- Khởi chạy cleanup task khi ứng dụng khởi động (có thể đặt trong main.py) ---
+# --- クリーンアップタスクの起動 (main.py で呼び出す必要あり) ---
+# main.py での呼び出し例:
 # @app.on_event("startup")
 # async def startup_event():
-#     logger.info("Khởi chạy tác vụ dọn dẹp job cũ...")
-#     asyncio.create_task(cleanup_old_jobs())
-#     ... (các startup khác)
-
+#     logger.info("古いジョブのクリーンアップタスクを起動します...")
+#     asyncio.create_task(tool03_service.cleanup_old_jobs())
