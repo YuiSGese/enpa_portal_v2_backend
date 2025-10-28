@@ -16,11 +16,23 @@ python migrations/create_tables.py
 
 2. create database seeder (optional):
 ```bash
-python migrations/seed_users.py
+python -m migrations.seed.seed_init
 ```
 ---
 
-3. run the development server:
+3. set vitural enviroment:
+```bash
+python -m venv venv
+```
+---
+
+4. run vitural enviroment:
+```bash
+venv\Scripts\activate
+```
+---
+
+5. run the development server:
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```

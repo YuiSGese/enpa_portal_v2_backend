@@ -79,3 +79,4 @@ uv==0.9.5
     # via -r requirements.in
 uvicorn==0.38.0
     # via -r requirements.in
+python-jose[cryptography]==3.3.0

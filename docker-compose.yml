@@ -14,16 +14,3 @@ services:
       MARIADB_COLLATION_SERVER: utf8mb4_general_ci
     ports:
       - "3307:3306"
-    volumes:
-      - db_data:/var/lib/mysql
-      - ./mariadb_config:/etc/mysql/conf.d # mount CẢ THƯ MỤC cấu hình
-      - ./mariadb_init:/docker-entrypoint-initdb.d # script init (chỉ chạy khi volume trống)
-    healthcheck:
-      test:
-        ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -proot || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
-volumes:
-  db_data:

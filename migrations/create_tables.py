@@ -5,7 +5,11 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.core.database import engine, Base
-from app.domain.entities.user_entity import User
 
+# ⚠️ Quan trọng: import các entity để SQLAlchemy "nhận biết"
+from app.domain.entities.UserEntity import UserEntity
+from app.domain.entities.RoleEntity import RoleEntity
+
+# Tạo bảng
 Base.metadata.create_all(bind=engine)
-print("Tables created successfully.")
+print("✅ Tables created successfully.")

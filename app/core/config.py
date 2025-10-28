@@ -1,0 +1,19 @@
+from dotenv import load_dotenv
+import os
+
+load_dotenv()  # đọc .env
+
+DB_USER = os.getenv("DB_USER")
+DB_PASS = os.getenv("DB_PASS")
+DB_HOST = os.getenv("DB_HOST")
+DB_PORT = os.getenv("DB_PORT")
+DB_NAME = os.getenv("DB_NAME")
+DB_ECHO = os.getenv("DB_ECHO", "false").lower() == "true"
+DB_POOL_SIZE = int(os.getenv("DB_POOL_SIZE", 5))
+DB_MAX_OVERFLOW = int(os.getenv("DB_MAX_OVERFLOW", 10))
+DB_POOL_RECYCLE = int(os.getenv("DB_POOL_RECYCLE", 3600))
+DB_ISOLATION_LEVEL = os.getenv("DB_ISOLATION_LEVEL", "READ COMMITTED")
+SECRET_KEY = os.getenv("SECRET_KEY", "change-me")
+TOKEN_PREFIX = os.getenv("TOKEN_PREFIX", "Bearer ")
+TOKEN_EXPIRATION_AFTER = int(os.getenv("TOKEN_EXPIRATION_AFTER", 60))
+ALGORITHM = os.getenv("ALGORITHM", "HS256")
