@@ -4,13 +4,13 @@ from fastapi import BackgroundTasks, HTTPException
 from typing import List, Optional, Dict
 import os
 import shutil
-from app.core.logger import logger # logger をインポート
+import logging 
 
-# 同一ディレクトリ (.) から schemas と service をインポート
+# Đồng thời directory (.) import schemas và service
 from . import schemas
 from . import service as tool03_service
 
-# --- start_image_generation_job 関数 ---
+# --- start_image_generation_job function ---
 def start_image_generation_job(
     product_rows: List[schemas.Tool03ProductRowInput],
     background_tasks: BackgroundTasks
@@ -19,46 +19,46 @@ def start_image_generation_job(
         raise HTTPException(status_code=400, detail="商品リストを空にすることはできません")
 
     job_id = str(uuid.uuid4())
-    # job をバックグラウンドタスクに追加
+    # Thêm job vào background tasks
     background_tasks.add_task(tool03_service.generate_images_background, job_id, product_rows)
 
-    # job_id をすぐに返す
+    # Trả về job_id ngay lập tức
     return schemas.Tool03CreateJobResponse(jobId=job_id, totalItems=len(product_rows))
 
-# --- get_job_status_controller 関数 ---
+# --- get_job_status_controller function ---
 def get_job_status_controller(job_id: str) -> Optional[schemas.Tool03JobStatusResponse]:
     status_dict = tool03_service.get_job_status(job_id)
     if status_dict:
-        # --- job_id を辞書に追加 ---
+        # --- Thêm job_id vào dictionary ---
         status_dict_with_id = {"jobId": job_id, **status_dict}
         # ---------------------------
         try:
-            # dict を Pydantic モデルに変換して検証し、返す
+            # Chuyển đổi dict sang Pydantic model để xác thực và trả về
             return schemas.Tool03JobStatusResponse(**status_dict_with_id)
         except Exception as e:
-            # 予期せぬ検証エラーがあればログに記録
-            logger.error(f"ジョブ {job_id} の JobStatusResponse 検証エラー: {e}")
-            logger.error(f"元のデータ: {status_dict_with_id}")
-            # データ構造がモデルと一致しない場合は 500 エラーを返す
+            # Ghi log nếu có lỗi xác thực không mong muốn
+            logging.error(f"ジョブ {job_id} の JobStatusResponse 検証エラー: {e}") # <<< Đã sửa logger -> logging
+            logging.error(f"元のデータ: {status_dict_with_id}") # <<< Đã sửa logger -> logging
+            # Trả về lỗi 500 nếu cấu trúc dữ liệu không khớp model
             raise HTTPException(status_code=500, detail="ジョブステータスデータの処理エラー。")
-    
-    # service がジョブを見つけられない場合は None を返す (router が 404 を返す)
+
+    # Trả về None nếu service không tìm thấy job (router sẽ trả về 404)
     return None
 
 
-# --- get_image_file_path_controller 関数 ---
+# --- get_image_file_path_controller function ---
 def get_image_file_path_controller(job_id: str, filename: str) -> Optional[str]:
      job_dir = tool03_service.JOB_STORAGE_BASE_DIR / job_id
      file_path = job_dir / filename
-     # パストラバーサル攻撃の試行をチェック
+     # Kiểm tra path traversal attack
      if not str(file_path.resolve()).startswith(str(job_dir.resolve())):
-          logger.warning(f"パストラバーサルの試行: {job_id}/{filename}")
+          logging.warning(f"パストラバーサルの試行: {job_id}/{filename}") # <<< Đã sửa logger -> logging
           return None
      if file_path.is_file():
           return str(file_path)
      return None
 
-# --- create_images_zip_controller 関数 ---
+# --- create_images_zip_controller function ---
 def create_images_zip_controller(job_id: str) -> Optional[str]:
     try:
         zip_path = tool03_service.create_job_zip_archive(job_id)
@@ -66,37 +66,37 @@ def create_images_zip_controller(job_id: str) -> Optional[str]:
     except FileNotFoundError:
          raise HTTPException(status_code=404, detail="ジョブディレクトリが見つかりません。")
     except Exception as e:
-         logger.error(f"ジョブ {job_id} の Zip 作成エラー: {e}", exc_info=True)
+         logging.error(f"ジョブ {job_id} の Zip 作成エラー: {e}", exc_info=True) # <<< Đã sửa logger -> logging
          raise HTTPException(status_code=500, detail="Zip ファイルの作成に失敗しました。")
 
-# --- start_ftp_upload_controller 関数 ---
+# --- start_ftp_upload_controller function ---
 def start_ftp_upload_controller(job_id: str, target: str, background_tasks: BackgroundTasks):
     job_status = tool03_service.get_job_status(job_id)
     if not job_status:
         raise HTTPException(status_code=404, detail="ジョブが見つかりません。")
-    
-    # 必要に応じて、ジョブが完了しているかどうかのチェック (現在はコメントアウト)
+
+    # (Optional check if job is completed - currently commented out)
     # if job_status.get("status") not in ["Completed", "Completed with errors"]:
     #     raise HTTPException(status_code=400, detail="ジョブはまだ完了していません。")
 
-    logger.info(f"ジョブ {job_id} の {target} への FTP アップロードタスクをバックグラウンドに追加します。")
+    logging.info(f"ジョブ {job_id} の {target} への FTP アップロードタスクをバックグラウンドに追加します。") # <<< Đã sửa logger -> logging
     background_tasks.add_task(tool03_service.upload_job_images_to_ftp, job_id, target)
 
-# --- start_image_regeneration_job 関数 ---
+# --- start_image_regeneration_job function ---
 def start_image_regeneration_job(
     job_id: str,
     modified_rows: List[schemas.Tool03ProductRowInput],
     background_tasks: BackgroundTasks
 ):
-    """指定された画像を再生成するためのバックグラウンドタスクを追加します。"""
-    # ジョブが存在するか確認
+    """Thêm background task để tái tạo ảnh cụ thể."""
+    # Kiểm tra job tồn tại
     existing_job_status = tool03_service.get_job_status(job_id)
     if not existing_job_status:
         raise HTTPException(status_code=404, detail="ジョブが見つかりません")
 
-    # 必要に応じて、ジョブが失敗状態でないかチェック (現在はコメントアウト)
+    # (Optional check if job is not in failed state - currently commented out)
     # if existing_job_status.get("status") == "Failed":
     #     raise HTTPException(status_code=400, detail="失敗したジョブは更新できません。")
 
-    logger.info(f"ジョブ {job_id} に {len(modified_rows)} 件の画像再生成タスクを追加します。")
+    logging.info(f"ジョブ {job_id} に {len(modified_rows)} 件の画像再生成タスクを追加します。") # <<< Đã sửa logger -> logging
     background_tasks.add_task(tool03_service.regenerate_specific_images_background, job_id, modified_rows)
