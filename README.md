@@ -9,33 +9,43 @@ Tài liệu này giúp thành viên mới trong team hiểu rõ **cấu trúc d�
 ## Getting Started
 
 1. create database from ORM:
+
 ```bash
 python migrations/create_tables.py
 ```
+
 ---
 
 2. create database seeder (optional):
+
 ```bash
 python -m migrations.seed.seed_init
 ```
+
 ---
 
 3. set vitural enviroment:
+
 ```bash
 python -m venv venv
 ```
+
 ---
 
 4. run vitural enviroment:
+
 ```bash
 venv\Scripts\activate
 ```
+
 ---
 
 5. run the development server:
+
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```
+
 ---
 
 ## 🧱 1. Tổng quan dự án
