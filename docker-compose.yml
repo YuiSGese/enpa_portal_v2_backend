@@ -4,12 +4,11 @@ services:
   mariadb:
     image: mariadb:10.11
     container_name: empa-mariadb
-    restart: unless-stopped
     environment:
       MARIADB_ROOT_PASSWORD: root
-      MARIADB_DATABASE: empa_portal_v2
+      MARIADB_DATABASE: empa_portal
       MARIADB_USER: empa
-      MARIADB_PASSWORD: empa_pass
+      MARIADB_PASSWORD: empa
       MARIADB_CHARACTER_SET_SERVER: utf8mb4
       MARIADB_COLLATION_SERVER: utf8mb4_general_ci
     ports:

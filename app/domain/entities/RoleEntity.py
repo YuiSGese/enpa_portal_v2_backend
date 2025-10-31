@@ -1,7 +1,13 @@
 from sqlalchemy import Column, Integer, String, DateTime, Date, Boolean, func
 from app.core.database import Base
+import enum
 
+class Role(enum.Enum):
+    ADMIN = "ROLE_ADMIN"
+    USER = "ROLE_USER"
+    
 class RoleEntity(Base):
+
     __tablename__ = "m_roles"
 
     id = Column(Integer, primary_key=True, index=True)

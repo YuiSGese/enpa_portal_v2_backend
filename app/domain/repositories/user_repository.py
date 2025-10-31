@@ -9,7 +9,7 @@ class UserRepository:
         return self.db.query(UserEntity).all()
     
     def get_by_username(self, username: str) -> UserEntity | None:
-        return self.db.query(UserEntity).filter_by(user_name=username).first()
+        return self.db.query(UserEntity).filter_by(username=username).first()
 
     def get_by_email(self, email: str) -> UserEntity | None:
         return self.db.query(UserEntity).filter(UserEntity.email == email).first()
