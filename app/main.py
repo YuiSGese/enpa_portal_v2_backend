@@ -33,4 +33,3 @@ async def root():
     return {"message": f"{APP_NAME} backend is running 🚀"}
 
 # Các middleware, exception handlers... của bạn có thể đặt ở đây
-

@@ -131,4 +131,3 @@ async def upload_images_to_ftp(
 
     # すぐに 202 を返す
     return {"message": f"ジョブ {job_id} の {target} へのFTPアップロードタスクがバックグラウンドで開始されました。"}
-
