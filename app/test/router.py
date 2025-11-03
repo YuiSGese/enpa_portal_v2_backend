@@ -48,3 +48,9 @@ def admin_dashboard(request: Request, user=Depends(require_roles(Role.ADMIN))):
 def user_dashboard(request: Request, user=Depends(require_roles(Role.USER))):
     user = request.state.user
     return {"msg": f"Hello user name: {user['user_name']} with role {user['role_name']}"}
+
+
+@router.get("/all")
+def user_dashboard(request: Request):
+    user = request.state.user
+    return {"msg": f"Hello user name: {user['user_name']} with role {user['role_name']}"}
