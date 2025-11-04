@@ -9,6 +9,7 @@ from app.core.database import engine, Base
 # ⚠️ Quan trọng: import các entity để SQLAlchemy "nhận biết"
 from app.domain.entities.UserEntity import UserEntity
 from app.domain.entities.RoleEntity import RoleEntity
+from app.domain.entities.CompanyEntity import CompanyEntity
 
 # Tạo bảng
 Base.metadata.create_all(bind=engine)

@@ -4,7 +4,7 @@ from app.core.database import Base
 class UserEntity(Base):
     __tablename__ = "m_users"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     user_name = Column(String(100), unique=True, index=True, nullable=False)
     password = Column(String(255), nullable=False)  
     email = Column(String(120), unique=True, index=True, nullable=True)
