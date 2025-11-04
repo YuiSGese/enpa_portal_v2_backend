@@ -12,7 +12,7 @@ class UserSchema(BaseModel):
     email: Optional[str] = None
     role_id: Optional[int] = None
     chatwork_id: str
-    company_id: Optional[str] = None
+    company_id: Optional[int] = None
 
     class Config:
         orm_mode = True  # quan trọng: cho phép chuyển từ SQLAlchemy object sang Pydantic
@@ -20,4 +20,4 @@ class UserSchema(BaseModel):
 
 class LoginResponse(BaseModel):
     access_token: str
-    user: UserSchema
+    user: Optional[UserSchema] = None

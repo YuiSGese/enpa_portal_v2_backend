@@ -7,7 +7,7 @@ def get_password_hash(password: str) -> str:
     Hash password và trả về dạng string UTF-8
     """
     hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=10))
-    return hashed.decode("utf-8")  # lưu vào DB dưới dạng string
+    return hashed.decode("utf-8")
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
