@@ -8,6 +8,10 @@ Tài liệu này giúp thành viên mới trong team hiểu rõ **cấu trúc d�
 
 ## Getting Started
 
+1. create docker database:
+```bash
+docker compose up
+```
 1. create database from ORM:
 ```bash
 python migrations/create_tables.py

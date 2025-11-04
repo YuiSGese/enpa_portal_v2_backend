@@ -1,0 +1,5 @@
+CREATE DATABASE IF NOT EXISTS `empa_portal_v2` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+
+CREATE USER IF NOT EXISTS 'empa'@'%' IDENTIFIED BY 'empa_pass';
+GRANT ALL PRIVILEGES ON `empa_portal_v2`.* TO 'empa'@'%';
+FLUSH PRIVILEGES;

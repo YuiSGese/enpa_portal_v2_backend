@@ -3,6 +3,8 @@ from jose import jwt
 from app.core.config import TOKEN_EXPIRATION_AFTER, SECRET_KEY, ALGORITHM
 from jose import jwt, JWTError
 from fastapi import HTTPException, status, Request
+from app.domain.entities.RoleEntity import Role
+from typing import Callable
 
 def create_access_token(data: dict, user_name: str, role_name: str, expires_delta: timedelta | None = None):
     to_encode = data.copy()
@@ -29,10 +31,26 @@ def get_token_property(token: str, property_name: str):
     except JWTError:
         return None
     
-def require_roles(*allowed_roles: str):
+def require_roles(*allowed_roles: str | Role) -> Callable:
     def dependency(request: Request):
         user = getattr(request.state, "user", None)
-        if not user or user.get("role_name") not in allowed_roles:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Permission denied") 
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+
+        user_role = user.get("role_name")
+
+        allowed_role_values = [
+            role.value if hasattr(role, "value") else role for role in allowed_roles
+        ]
+
+        if user_role == Role.ADMIN.value:
+            return user
+
+        if user_role not in allowed_role_values:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission denied"
+            )
+
         return user
     return dependency

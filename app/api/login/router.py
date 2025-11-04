@@ -16,14 +16,14 @@ def login(login_data: LoginRequest, db: Session = Depends(get_db)):
     user = repo.get_by_username(login_data.username)
     
     if not user or not verify_password(login_data.password, user.password):
-        raise HTTPException(status_code=400, detail="Invalid credentials")
+        raise HTTPException(status_code=400, detail="Sai tk mk")
     
     roleRepo = RoleRepository(db)
     role = roleRepo.get_by_id(user.role_id)
 
-    token = create_access_token({"sub": str(user.id)}, user.user_name, role.role_name)
+    token = create_access_token({"sub": str(user.id)}, user.username, role.role_name)
     
     return {
         "access_token": TOKEN_PREFIX + token,
-        "user_name": user.user_name
+        "user": user
     }

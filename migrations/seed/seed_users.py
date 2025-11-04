@@ -1,5 +1,6 @@
 import sys
 import os
+from datetime import datetime
 
 # Thêm project root vào sys.path để import app
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -12,35 +13,60 @@ def seed_users():
 
     users_data = [
         {
-            "user_name": "Yui",
-            "email": "yuice@example.com",
-            "password": "$10$2gaTaMM1Lz1rL5TEGOI3kur/p0R5KegrIn1wDLjEK5JPgKXnWnx1q",
+            "username": "yui",
+            "email": "yui@example.com",
+            "password": "$2b$10$2gaTaMM1Lz1rL5TEGOI3kur/p0R5KegrIn1wDLjEK5JPgKXnWnx1q",  # hashed password
+            "chatwork_id": "CW001",
+            "company_id": None,
             "role_id": 1
         },
         {
-            "user_name": "khanh",
+            "username": "khanh",
             "email": "khanh@example.com",
             "password": "$2b$10$rMxBMOcHUvpzwB35k/0B6OPncZno1AKuHqk7DU/nuaXOd7wIxc.JC",
+            "chatwork_id": "CW002",
+            "company_id": None,
             "role_id": 2
         },
         {
-            "user_name": "admin",
+            "username": "admin",
             "email": "admin@example.com",
             "password": "$2b$10$2gaTaMM1Lz1rL5TEGOI3kur/p0R5KegrIn1wDLjEK5JPgKXnWnx1q",
+            "chatwork_id": "CW003",
+            "company_id": None,
+            "role_id": 1
+        },
+        {
+            "username": "alice",
+            "email": "alice@example.com",
+            "password": "$2b$10$examplehashedpassword4",
+            "chatwork_id": "CW004",
+            "company_id": None,
             "role_id": 2
         },
+        {
+            "username": "bob",
+            "email": "bob@example.com",
+            "password": "$2b$10$examplehashedpassword5",
+            "chatwork_id": "CW005",
+            "company_id": None,
+            "role_id": 3
+        }
     ]
 
     for user in users_data:
-        # Kiểm tra email đã tồn tại chưa
         existing_user = db.query(UserEntity).filter_by(email=user["email"]).first()
         if not existing_user:
             new_user = UserEntity(
-                user_name=user["user_name"],
+                username=user["username"],
                 email=user["email"],
                 password=user["password"],
+                chatwork_id=user["chatwork_id"],
+                company_id=user["company_id"],
                 role_id=user["role_id"],
-                delete_flg=False
+                delete_flg=False,
+                create_datetime=datetime.now(),
+                update_datetime=datetime.now()
             )
             db.add(new_user)
 

@@ -3,6 +3,7 @@ from playwright.sync_api import sync_playwright
 from app.core.database import get_db
 from app.domain.repositories.user_repository import UserRepository
 from app.core.security import require_roles
+from app.domain.entities.RoleEntity import Role
 
 router = APIRouter(prefix="/test", tags=["test"])
 
@@ -39,6 +40,17 @@ def scrape_rakuten():
 #     return {"id": new_user.id, "name": new_user.name, "email": new_user.email}
 
 @router.get("/admin/dashboard")
-def admin_dashboard(request: Request, user=Depends(require_roles("ROLE_ADMIN"))):
+def admin_dashboard(request: Request, user=Depends(require_roles(Role.ADMIN))):
     user = request.state.user
     return {"msg": f"Hello admin name: {user['user_name']} with role {user['role_name']}"}
+
+@router.get("/user/dashboard")
+def user_dashboard(request: Request, user=Depends(require_roles(Role.USER))):
+    user = request.state.user
+    return {"msg": f"Hello user name: {user['user_name']} with role {user['role_name']}"}
+
+
+@router.get("/all")
+def user_dashboard(request: Request):
+    user = request.state.user
+    return {"msg": f"Hello user name: {user['user_name']} with role {user['role_name']}"}

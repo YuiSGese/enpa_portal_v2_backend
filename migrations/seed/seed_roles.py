@@ -12,7 +12,7 @@ def seed_roles():
 
     roles_data = [
         {"role_name": "ROLE_ADMIN", "description": "Quản trị toàn bộ hệ thống"},
-        {"role_name": "ROLE_USER", "description": "Quản lý dữ liệu, báo cáo"},
+        {"role_name": "ROLE_USER", "description": ""},
     ]
 
     for role in roles_data:

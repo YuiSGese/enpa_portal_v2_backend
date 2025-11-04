@@ -5,7 +5,7 @@ from app.core.middleware import jwt_role_middleware
 from app.core.cors import setup_cors
 
 # Import các router
-# from app.tool03.api import router as tool03_api_router # Router mới cho Tool 03
+from app.tool03 import router as tool03_router
 from app.test import router as test_router
 from app.api.login import router as login_router
 
@@ -27,7 +27,7 @@ app.add_exception_handler(RequestValidationError, ValidationHandler)
 # app.include_router(tool03_api_router.router)
 app.include_router(test_router.router)
 app.include_router(login_router.router)
-                   
+app.include_router(tool03_router.router)                   
 # Thêm middleware
 app.middleware("http")(jwt_role_middleware)
 
@@ -37,4 +37,3 @@ async def root():
     return {"message": f"{APP_NAME} backend is running 🚀"}
 
 # Các middleware, exception handlers... của bạn có thể đặt ở đây
-
