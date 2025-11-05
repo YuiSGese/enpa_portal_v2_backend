@@ -8,7 +8,8 @@ from typing import Callable
 
 def create_access_token(data: dict, user_name: str, role_name: str, expires_delta: timedelta | None = None):
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=TOKEN_EXPIRATION_AFTER))
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=int(TOKEN_EXPIRATION_AFTER)))
+    
     to_encode.update(
         {
             "exp": expire, 

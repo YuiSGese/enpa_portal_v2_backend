@@ -16,7 +16,7 @@ def login(login_data: LoginRequest, db: Session = Depends(get_db)):
     user = repo.get_by_username(login_data.username)
     
     if not user or not verify_password(login_data.password, user.password):
-        raise HTTPException(status_code=400, detail="Sai tk mk")
+        raise HTTPException(status_code=400, detail="アカウントまたはパスワードが正しくありません。")
     
     roleRepo = RoleRepository(db)
     role = roleRepo.get_by_id(user.role_id)

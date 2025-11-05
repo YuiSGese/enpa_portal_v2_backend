@@ -10,6 +10,7 @@ from app.core.database import engine, Base
 from app.domain.entities.UserEntity import UserEntity
 from app.domain.entities.RoleEntity import RoleEntity
 from app.domain.entities.CompanyEntity import CompanyEntity
+from app.domain.entities.SampleEntity import SampleEntity
 
 # Tạo bảng
 Base.metadata.create_all(bind=engine)
