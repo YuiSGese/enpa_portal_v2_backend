@@ -1,5 +1,5 @@
 from fastapi import Request
-from jose import jwt, JWTError
+from jose import jwt, JWTError, ExpiredSignatureError
 from datetime import datetime
 from app.core.config import SECRET_KEY, ALGORITHM, TOKEN_PREFIX
 from app.domain.response.custom_response import custom_error_response
@@ -27,14 +27,14 @@ async def jwt_role_middleware(request: Request, call_next):
     
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        if "exp" in payload and datetime.utcnow().timestamp() > payload["exp"]:
-            return custom_error_response(401, "Token expired")
         
         # lưu payload vào request.state để dùng trong route
         request.state.user = {
             "user_name": payload.get("user_name"),
             "role_name": payload.get("role_name")
         }
+    except ExpiredSignatureError:
+        return custom_error_response(401, "Token expired")
     except JWTError:
         return custom_error_response(401, "Invalid token")
     
