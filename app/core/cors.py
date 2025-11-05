@@ -7,7 +7,10 @@ def setup_cors(app, env: str = "development"):
     :param env: môi trường hiện tại (development | production)
     """
     if env == "development":
-        origins = ["*"]  # Cho phép tất cả trong môi trường dev
+        origins = [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ]
     else:
         origins = [
             "https://your-frontend-domain.com",  # Production domain
