@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.domain.repositories.user_repository import UserRepository
 from app.domain.repositories.role_repository import RoleRepository
-from app.api.login.validate import LoginRequest, LoginResponse
+from app.api.login.login_schemas import LoginRequest, LoginResponse
 from app.core.bcrypt import verify_password
 from app.core.security import create_access_token
 from app.core.config import TOKEN_PREFIX

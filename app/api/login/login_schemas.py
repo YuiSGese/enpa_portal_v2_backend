@@ -11,11 +11,10 @@ class UserSchema(BaseModel):
     username: str
     email: Optional[str] = None
     role_id: Optional[int] = None
-    chatwork_id: str
     company_id: Optional[int] = None
 
     class Config:
-        orm_mode = True  # quan trọng: cho phép chuyển từ SQLAlchemy object sang Pydantic
+        from_attributes = True  # quan trọng: cho phép chuyển từ SQLAlchemy object sang Pydantic
 
 
 class LoginResponse(BaseModel):
