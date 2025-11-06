@@ -4,7 +4,7 @@ name: Deploy Backend to AWS ECS
 # Kích hoạt workflow khi push code lên nhánh "master"
 on:
   push:
-    branches: ["master"]
+    branches: ["production"]
 
 # Cấp quyền cho OIDC (bắt buộc)
 permissions:
