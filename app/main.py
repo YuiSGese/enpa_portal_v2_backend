@@ -7,8 +7,8 @@ from app.core.cors import setup_cors
 # Import các router
 from app.tool03 import router as tool03_router
 from app.test import router as test_router
-from app.api.login import router as login_router
-from app.api.staff import router as staff_router
+from app.api.login import login_router as login_router
+from app.api.staff import staff_router as staff_router
 
 
 # Import các router khác nếu có (ví dụ: tool04_router...)

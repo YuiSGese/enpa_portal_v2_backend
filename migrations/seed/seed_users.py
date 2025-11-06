@@ -16,15 +16,13 @@ def seed_users():
             "username": "yui",
             "email": "yui@example.com",
             "password": "$2b$10$2gaTaMM1Lz1rL5TEGOI3kur/p0R5KegrIn1wDLjEK5JPgKXnWnx1q",  # hashed password
-            "chatwork_id": "CW001",
             "company_id": 1,
             "role_id": 1
         },
         {
             "username": "khanh",
             "email": "khanh@example.com",
-            "password": "$2b$10$rMxBMOcHUvpzwB35k/0B6OPncZno1AKuHqk7DU/nuaXOd7wIxc.JC",
-            "chatwork_id": "CW002",
+            "password": "$2b$10$2gaTaMM1Lz1rL5TEGOI3kur/p0R5KegrIn1wDLjEK5JPgKXnWnx1q",
             "company_id": 1,
             "role_id": 2
         },
@@ -32,7 +30,6 @@ def seed_users():
             "username": "admin",
             "email": "admin@example.com",
             "password": "$2b$10$2gaTaMM1Lz1rL5TEGOI3kur/p0R5KegrIn1wDLjEK5JPgKXnWnx1q",
-            "chatwork_id": "CW003",
             "company_id": 1,
             "role_id": 1
         },
@@ -45,7 +42,6 @@ def seed_users():
                 username=user["username"],
                 email=user["email"],
                 password=user["password"],
-                chatwork_id=user["chatwork_id"],
                 company_id=user["company_id"],
                 role_id=user["role_id"]
             )
