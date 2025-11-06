@@ -17,7 +17,7 @@ def seed_users():
             "email": "yui@example.com",
             "password": "$2b$10$2gaTaMM1Lz1rL5TEGOI3kur/p0R5KegrIn1wDLjEK5JPgKXnWnx1q",  # hashed password
             "chatwork_id": "CW001",
-            "company_id": None,
+            "company_id": 1,
             "role_id": 1
         },
         {
@@ -25,7 +25,7 @@ def seed_users():
             "email": "khanh@example.com",
             "password": "$2b$10$rMxBMOcHUvpzwB35k/0B6OPncZno1AKuHqk7DU/nuaXOd7wIxc.JC",
             "chatwork_id": "CW002",
-            "company_id": None,
+            "company_id": 1,
             "role_id": 2
         },
         {
@@ -33,25 +33,9 @@ def seed_users():
             "email": "admin@example.com",
             "password": "$2b$10$2gaTaMM1Lz1rL5TEGOI3kur/p0R5KegrIn1wDLjEK5JPgKXnWnx1q",
             "chatwork_id": "CW003",
-            "company_id": None,
+            "company_id": 1,
             "role_id": 1
         },
-        {
-            "username": "alice",
-            "email": "alice@example.com",
-            "password": "$2b$10$examplehashedpassword4",
-            "chatwork_id": "CW004",
-            "company_id": None,
-            "role_id": 2
-        },
-        {
-            "username": "bob",
-            "email": "bob@example.com",
-            "password": "$2b$10$examplehashedpassword5",
-            "chatwork_id": "CW005",
-            "company_id": None,
-            "role_id": 3
-        }
     ]
 
     for user in users_data:
@@ -63,10 +47,7 @@ def seed_users():
                 password=user["password"],
                 chatwork_id=user["chatwork_id"],
                 company_id=user["company_id"],
-                role_id=user["role_id"],
-                delete_flg=False,
-                create_datetime=datetime.now(),
-                update_datetime=datetime.now()
+                role_id=user["role_id"]
             )
             db.add(new_user)
 

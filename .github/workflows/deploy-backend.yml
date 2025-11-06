@@ -1,0 +1,56 @@
+# Tên của workflow
+name: Deploy Backend to AWS ECS
+
+# Kích hoạt workflow khi push code lên nhánh "master"
+on:
+  push:
+    branches: ["master"]
+
+# Cấp quyền cho OIDC (bắt buộc)
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Build and Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      # Bước 1: Lấy code từ repo
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      # Bước 2: Cấu hình "chìa khóa" AWS (dùng OIDC Role)
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # Bước 3: Đăng nhập vào kho ECR
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Bước 4: Build, tag, và push Docker image
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: latest # Chúng ta sẽ dùng tag 'latest'
+        run: |
+          docker build -t $ECR_REGISTRY/${{ secrets.ECR_REPOSITORY_URI }}:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/${{ secrets.ECR_REPOSITORY_URI }}:$IMAGE_TAG
+          echo "::set-output name=image::$ECR_REGISTRY/${{ secrets.ECR_REPOSITORY_URI }}:$IMAGE_TAG"
+
+      # Bước 5: Ra lệnh cho ECS deploy (cập nhật service)
+      - name: Deploy to ECS
+        run: |
+          aws ecs update-service --cluster empa-cluster-1 --service empa-backend-service --force-new-deployment
+        # LƯU Ý QUAN TRỌNG:
+        # Bước này SẼ THẤT BẠI (FAIL) trong lần chạy đầu tiên,
+        # vì chúng ta CHƯA TẠO "empa-backend-service".
+        # Điều này là BÌNH THƯỜNG.
+        # Mục tiêu chính của lần chạy đầu tiên là đẩy (push) image lên ECR.
+        continue-on-error: true # Cho phép workflow tiếp tục dù bước này lỗi

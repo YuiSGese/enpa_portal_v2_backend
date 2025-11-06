@@ -9,6 +9,7 @@ from app.tool03 import router as tool03_router
 from app.tool10 import router as tool10_router
 from app.test import router as test_router
 from app.api.login import router as login_router
+from app.api.staff import router as staff_router
 
 
 # Import các router khác nếu có (ví dụ: tool04_router...)
@@ -16,7 +17,10 @@ from app.api.login import router as login_router
 APP_NAME = "Enpa Portal V2 API"
 APP_ENV = "development"
 
-app = FastAPI(title=APP_NAME) # Sử dụng biến tạm
+app = FastAPI(title=APP_NAME)
+
+# Thêm middleware
+app.middleware("http")(jwt_role_middleware)
 
 # Gọi setup CORS
 setup_cors(app, env=APP_ENV)
@@ -32,6 +36,7 @@ app.include_router(tool03_router.router)
 app.include_router(tool10_router.router)                  
 # Thêm middleware
 app.middleware("http")(jwt_role_middleware)
+app.include_router(staff_router.router)                     
 
 @app.get("/")
 async def root():

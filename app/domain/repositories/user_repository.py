@@ -14,9 +14,8 @@ class UserRepository:
     def get_by_email(self, email: str) -> UserEntity | None:
         return self.db.query(UserEntity).filter(UserEntity.email == email).first()
 
-    def create(self, name: str, email: str, password: str):
-        new_user = UserEntity(name=name, email=email, password=password)
-        self.db.add(new_user)
+    def create_user(self, userEntity: UserEntity):
+        self.db.add(userEntity)
         self.db.commit()
-        self.db.refresh(new_user)
-        return new_user
+        self.db.refresh(userEntity)
+        return userEntity
