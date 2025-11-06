@@ -1,10 +1,9 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import List, Optional
 
 class StaffCreateRequest(BaseModel):
     username: str
     email: str
-    chatwork_id: str
     is_admin: bool
     password: str
 
@@ -14,12 +13,19 @@ class UserSchema(BaseModel):
     username: str
     email: Optional[str] = None
     role_id: Optional[int] = None
-    chatwork_id: str
     company_id: Optional[int] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class StaffCreateResponse(BaseModel):
-    detail: str
+    message: str
+    user: Optional[UserSchema] = None
+
+class StaffListResponse(BaseModel):
+    count: int
+    list: List[UserSchema]
+
+class StaffDeleteResponse(BaseModel):
+    message: str
     user: Optional[UserSchema] = None
