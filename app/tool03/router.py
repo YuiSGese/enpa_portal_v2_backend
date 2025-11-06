@@ -12,7 +12,7 @@ from . import controller
 from . import service as tool03_service # ジョブステータス確認用の service をインポート
 
 router = APIRouter(
-    prefix="/tools/03",
+    prefix="/api/tools/03",
     tags=["Tool 03 - 二重価格画像作成"],
 )
 
