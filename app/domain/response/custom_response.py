@@ -8,6 +8,6 @@ def custom_error_response(status_code: int = 400, message: str = ""):
         status_code=status_code,
         content={
             "status_code": status_code,
-            "message": message
+            "detail": message
         }
     )

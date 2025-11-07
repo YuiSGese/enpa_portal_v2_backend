@@ -20,14 +20,12 @@ class UserEntity(Base):
         self,
         username: str,
         password: str,
-        chatwork_id: str,
         email: str | None = None,
         company_id: Integer | None = None,
         role_id: int | None = None,
     ):
         self.username = username
         self.password = password
-        self.chatwork_id = chatwork_id
         self.email = email
         self.company_id = company_id
         self.role_id = role_id
