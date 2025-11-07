@@ -11,6 +11,7 @@ from app.domain.entities.UserEntity import UserEntity
 from app.core.security import get_user_login
 from app.api.staff.staff_repository import staff_repository
 
+
 router = APIRouter(prefix="/staff", tags=["staff"])
 
 @router.post("/create", response_model=StaffCreateResponse)
@@ -44,7 +45,7 @@ def create_staff(request: Request, form_data: StaffCreateRequest, db: Session = 
             userLogin.company_id,
             user_role_id
         )
-
+        
         userCreated = repo.create_user(new_user)
 
         return {

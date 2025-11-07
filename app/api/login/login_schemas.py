@@ -15,6 +15,7 @@ class UserSchema(BaseModel):
     company_id: Optional[int] = None
     company_name: Optional[str] = None
 
+
     class Config:
         from_attributes = True  # quan trọng: cho phép chuyển từ SQLAlchemy object sang Pydantic
 

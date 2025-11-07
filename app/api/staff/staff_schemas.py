@@ -17,17 +17,19 @@ class UserSchema(BaseModel):
     company_id: Optional[int] = None
     company_name: Optional[str] = None
 
+
+
     class Config:
         from_attributes = True
 
 class StaffCreateResponse(BaseModel):
     detail: str
     user: Optional[UserSchema] = None
-
 class StaffListResponse(BaseModel):
     count: int
     list: List[UserSchema]
 
 class StaffDeleteResponse(BaseModel):
     detail: str
+
     user: Optional[UserSchema] = None
