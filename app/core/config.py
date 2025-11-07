@@ -17,3 +17,6 @@ SECRET_KEY = os.getenv("SECRET_KEY", "change-me")
 TOKEN_PREFIX = os.getenv("TOKEN_PREFIX", "Bearer ")
 TOKEN_EXPIRATION_AFTER = int(os.getenv("TOKEN_EXPIRATION_AFTER", 60))
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
+
+# --- THÊM BIẾN MỚI CHO ADMIN INIT ---
+ADMIN_INIT_PASSWORD = os.getenv("ADMIN_INIT_PASSWORD", "default_admin_pass")
