@@ -13,13 +13,15 @@ class UserSchema(BaseModel):
     username: str
     email: Optional[str] = None
     role_id: Optional[int] = None
+    role_name: Optional[str] = None
     company_id: Optional[int] = None
+    company_name: Optional[str] = None
 
     class Config:
         from_attributes = True
 
 class StaffCreateResponse(BaseModel):
-    message: str
+    detail: str
     user: Optional[UserSchema] = None
 
 class StaffListResponse(BaseModel):
@@ -27,5 +29,5 @@ class StaffListResponse(BaseModel):
     list: List[UserSchema]
 
 class StaffDeleteResponse(BaseModel):
-    message: str
+    detail: str
     user: Optional[UserSchema] = None
