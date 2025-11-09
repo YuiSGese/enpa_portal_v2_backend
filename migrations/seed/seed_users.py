@@ -78,9 +78,7 @@ def seed_users():
             "username": "yui",
             "email": "yui@example.com",
             "password": hashed_password_admin, # <--- SỬA
-            "chatwork_id": "CW001",           # <--- THÊM (Vì UserEntity yêu cầu)
-=======
-            
+            "chatwork_id": "CW001",           # <--- THÊM 
             "company_id": 1,
             "role_id": 1
         },
