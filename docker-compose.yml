@@ -1,6 +1,7 @@
 version: "3.9"
 
 services:
+  # --- 1. Dịch vụ Database (Đã có, giữ nguyên) ---
   mariadb:
     image: mariadb:10.11
     container_name: empa-mariadb
@@ -9,7 +10,40 @@ services:
       MARIADB_DATABASE: empa_portal
       MARIADB_USER: empa
       MARIADB_PASSWORD: empa
+      # Thêm 2 biến môi trường (theo Checklist 1.2) để fix lỗi UTF-8
       MARIADB_CHARACTER_SET_SERVER: utf8mb4
       MARIADB_COLLATION_SERVER: utf8mb4_general_ci
     ports:
       - "3307:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+
+  # --- 2. Dịch vụ S3 Giả lập (Mới - Checklist 1.1) ---
+  minio:
+    image: minio/minio:RELEASE.2024-07-23T01-14-38Z
+    container_name: empa-minio-s3
+    ports:
+      - "9000:9000" # S3 API Endpoint
+      - "9001:9001" # Minio Console (Web UI)
+    environment:
+      # Đặt user/pass cho Minio (dùng cho local)
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+
+  # --- 3. Dịch vụ SQS Giả lập (Mới - Checklist 1.1) ---
+  elasticmq:
+    image: softwaremill/elasticmq-native:1.6.2
+    container_name: empa-elasticmq-sqs
+    ports:
+      - "9324:9324" # SQS API Endpoint
+      - "9325:9325" # ElasticMQ Console (Web UI - không bắt buộc)
+    volumes:
+      - elasticmq_data:/var/lib/elasticmq
+
+volumes:
+  mariadb_data:
+  minio_data:
+  elasticmq_data:
