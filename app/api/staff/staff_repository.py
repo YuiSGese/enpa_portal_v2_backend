@@ -11,6 +11,9 @@ class staff_repository:
     def get_by_username(self, username: str) -> UserEntity | None:
         return self.db.query(UserEntity).filter_by(username=username).first()
 
+    def get_role_by_role_name(self, role_name: str) -> RoleEntity | None:
+        return self.db.query(RoleEntity).filter_by(role_name=role_name).first()
+
     def get_by_email(self, email: str) -> UserEntity | None:
         return self.db.query(UserEntity).filter(UserEntity.email == email).first()
     

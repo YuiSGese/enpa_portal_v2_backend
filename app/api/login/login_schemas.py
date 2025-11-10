@@ -7,12 +7,12 @@ class LoginRequest(BaseModel):
 
 # Schema con cho user
 class UserSchema(BaseModel):
-    id: int
+    id: str
     username: str
     email: Optional[str] = None
     role_name: Optional[str] = None
-    role_id: Optional[int] = None
-    company_id: Optional[int] = None
+    role_id: Optional[str] = None
+    company_id: Optional[str] = None
     company_name: Optional[str] = None
 
     class Config:

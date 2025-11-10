@@ -13,6 +13,7 @@ def seed_company():
 
     company_data = [
         {
+            "id": "f97726eb-387d-4839-b686-368c32ba92c0",
             "company_name": "Gakusai株式会社",
         }
     ]
@@ -21,6 +22,7 @@ def seed_company():
         existing_data = db.query(CompanyEntity).filter_by(company_name=data["company_name"]).first()
         if not existing_data:
             new_data = CompanyEntity(
+                id=data["f97726eb-387d-4839-b686-368c32ba92c0"],
                 company_name=data["company_name"],
                 delete_flg=False,
                 create_datetime=datetime.now(),
