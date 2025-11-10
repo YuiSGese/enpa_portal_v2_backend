@@ -33,9 +33,16 @@ def create_staff(request: Request, form_data: StaffCreateRequest, db: Session = 
         usernameLogin = get_user_login(request)
         userLogin = repo.get_by_username(usernameLogin)
 
-        user_role_id = 2 # default ROLE_USER
+        # default ROLE_USER
+        role_user_entity = repo.get_role_by_role_name(Role.USER.value)
+        print(role_user_entity)
+        if not role_user_entity:
+            return custom_error_response(500, "問題が発生しました!! もう一度お試しください")
+
+        user_role_id = role_user_entity.id
         if form_data.is_admin:
-            user_role_id = 1 # ROLE_ADMIN
+            # ROLE_ADMIN
+            user_role_id = repo.get_role_by_role_name(Role.ADMIN.value).id
 
         new_user = UserEntity(
             form_data.username,
@@ -57,7 +64,7 @@ def create_staff(request: Request, form_data: StaffCreateRequest, db: Session = 
     
 
 @router.get("/list", response_model=StaffListResponse)
-def staff_list(company_id: int, db: Session = Depends(get_db), user=Depends(require_roles(Role.ADMIN))):
+def staff_list(company_id: str, db: Session = Depends(get_db), user=Depends(require_roles(Role.ADMIN))):
     try:
         repo = staff_repository(db)
         users  = repo.get_list_user_by_company_id(company_id)
