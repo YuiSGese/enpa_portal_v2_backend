@@ -7,7 +7,7 @@ from app.domain.response.custom_response import custom_error_response
 # các route không cần check
 EXEMPT_PATHS = [
     "/auth/login", 
-    "/auth/register",
+    "/registration/",
     "/docs",
     "/redoc", 
     "/openapi.json",

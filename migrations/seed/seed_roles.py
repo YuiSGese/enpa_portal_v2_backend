@@ -14,12 +14,12 @@ def seed_roles():
         {
             "id": "f97726eb-387d-4839-b686-368c32ba92b0",
             "role_name": "ROLE_ADMIN", 
-            "description": "",
+            "note": "",
         },
         {
             "id": "f97726eb-387d-4839-b686-368c32ba92b1",
             "role_name": "ROLE_USER", 
-            "description": "",
+            "note": "",
         },
     ]
 
@@ -29,7 +29,7 @@ def seed_roles():
             new_role = RoleEntity(
                 id=role["id"],
                 role_name=role["role_name"],
-                description=role["description"]
+                note=role["note"]
             )
             db.add(new_role)
 

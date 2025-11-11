@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width">
+  <title>Empowerment Portal Email</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #f6f7f9;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    .email-wrapper {
+      width: 100%;
+      padding: 30px 10px;
+      background-color: #f6f7f9;
+    }
+
+    .email-container {
+      max-width: 600px;
+      margin: 0 auto;
+      background-color: #ffffff;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      border-top: 6px solid #E6372D;
+    }
+
+    .header {
+      text-align: center;
+      padding: 30px 20px 10px 20px;
+    }
+
+    .header img {
+      max-width: 180px;
+      height: auto;
+    }
+
+    .content {
+      padding: 20px 40px;
+      color: #333333;
+      line-height: 1.6;
+    }
+
+    .content h1 {
+      color: #E6372D;
+      font-size: 24px;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+
+    .content p {
+      font-size: 15px;
+      margin-bottom: 16px;
+    }
+
+    .button-container {
+      text-align: center;
+      margin-top: 25px;
+      margin-bottom: 25px;
+    }
+
+    .button {
+      display: inline-block;
+      background-color: #E6372D;
+      color: #ffffff !important;
+      text-decoration: none;
+      padding: 12px 28px;
+      border-radius: 6px;
+      font-weight: bold;
+      font-size: 15px;
+    }
+
+    .button:hover {
+      opacity: 0.9;
+    }
+
+    .footer {
+      background-color: #f9f9f9;
+      padding: 20px 30px;
+      text-align: center;
+      font-size: 13px;
+      color: #777777;
+      border-top: 1px solid #eeeeee;
+    }
+
+    @media screen and (max-width: 600px) {
+      .content {
+        padding: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="email-wrapper">
+    <div class="email-container">
+      <!-- Header -->
+      <div class="header">
+        <img src="https://empowerment-town.com/wp-content/themes/Empo_web/img/ヘッダ_エンパタウン.bmp" alt="Empowerment Portal">
+      </div>
+
+      <!-- Content -->
+      <div class="content">
+        <h1>エンパタウンへようこそ{{username}}</h1>
+        <p>
+          ご登録ありがとうございます。
+          以下のリンクから登録を完了してください。
+        </p>
+
+        <div class="button-container">
+          <a href="{{cta_link}}" class="button">登録を完了する</a>
+        </div>
+
+        <p>
+          この操作を要求していない場合は、このメールを無視してください。 
+          アカウントの安全を守るため、このリンクを他の人と共有しないでください。
+        </p>
+      </div>
+
+      <!-- Footer -->
+      <div class="footer">
+        <p>© エンパタウン株式会社</p>
+        <p>733-0011 広島県広島市西区横川町3-12-18横川駅前ビル5F • 日本</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
