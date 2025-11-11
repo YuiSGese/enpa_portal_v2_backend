@@ -1,4 +1,5 @@
 from datetime import datetime
+from re import S
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 
@@ -32,6 +33,20 @@ class RegistrationResponse(BaseModel):
     entity: Optional[ProvisionalRegistration] = None
 
 
-class VerifyRegistrationResponse(BaseModel):
+class ProvisionalRegistrationCheckResponse(BaseModel):
     detail: str
-    entity: Optional[ProvisionalRegistration] = None
+    valid: bool
+
+class DefinitiveRegistrationRequest(BaseModel):
+
+    prov_reg_id: str
+    store_id: str
+    store_url: str
+    store_name: str
+    default_tax_rate: str
+    tax_rounding: str
+    username: str
+    email: EmailStr
+
+class DefinitiveRegistrationResponse(BaseModel):
+    detail: str

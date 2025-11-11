@@ -11,7 +11,7 @@ class StoreEntity(Base):
     rlogin_pw = Column(String(100), nullable=True)
     path_name = Column(String(100), nullable=False)
     get_search_type = Column(String(10), nullable=True)
-    company_id = Column(Integer, nullable=True)
+    company_id = Column(CHAR(36), nullable=True)
     ftp_password = Column(String(100), nullable=True)
     ftp_username = Column(String(100), nullable=True)
     consulting = Column(Boolean, nullable=True)
