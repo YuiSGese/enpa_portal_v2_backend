@@ -1,13 +1,15 @@
 from dotenv import load_dotenv
 import os
 
-load_dotenv()  # đọc .env
+load_dotenv()
 
 DB_USER = os.getenv("DB_USER")
 DB_PASS = os.getenv("DB_PASS")
 DB_HOST = os.getenv("DB_HOST")
 DB_PORT = os.getenv("DB_PORT")
 DB_NAME = os.getenv("DB_NAME")
+PUBLIC_FRONTEND_DOMAIN=os.getenv("PUBLIC_FRONTEND_DOMAIN")
+PUBLIC_BACKEND_DOMAIN=os.getenv("PUBLIC_BACKEND_DOMAIN")
 DB_ECHO = os.getenv("DB_ECHO", "false").lower() == "true"
 DB_POOL_SIZE = int(os.getenv("DB_POOL_SIZE", 5))
 DB_MAX_OVERFLOW = int(os.getenv("DB_MAX_OVERFLOW", 10))
@@ -17,3 +19,7 @@ SECRET_KEY = os.getenv("SECRET_KEY", "change-me")
 TOKEN_PREFIX = os.getenv("TOKEN_PREFIX", "Bearer ")
 TOKEN_EXPIRATION_AFTER = int(os.getenv("TOKEN_EXPIRATION_AFTER", 60))
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
+SMTP_HOST = os.getenv("SMTP_HOST")
+SMTP_PORT = os.getenv("SMTP_PORT")
+SMTP_USER = os.getenv("SMTP_USER")
+SMTP_PASS = os.getenv("SMTP_PASS")

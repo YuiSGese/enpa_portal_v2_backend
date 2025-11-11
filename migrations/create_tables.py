@@ -13,6 +13,7 @@ from app.domain.entities.CompanyEntity import CompanyEntity
 from app.domain.entities.SampleEntity import SampleEntity
 from app.domain.entities.ParameterEntity import ParameterEntity
 from app.domain.entities.StoreEntity import StoreEntity
+from app.domain.entities.ProvisionalRegistrationEntity import ProvisionalRegistrationEntity
 
 # Tạo bảng
 Base.metadata.create_all(bind=engine)

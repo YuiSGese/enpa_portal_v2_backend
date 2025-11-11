@@ -9,7 +9,7 @@ from app.tool03 import router as tool03_router
 from app.test import router as test_router
 from app.api.login import login_router as login_router
 from app.api.staff import staff_router as staff_router
-
+from app.api.registration import registration_router
 
 # Import các router khác nếu có (ví dụ: tool04_router...)
 
@@ -32,7 +32,8 @@ app.add_exception_handler(RequestValidationError, ValidationHandler)
 app.include_router(test_router.router)
 app.include_router(login_router.router)
 app.include_router(tool03_router.router)       
-app.include_router(staff_router.router)                     
+app.include_router(staff_router.router)       
+app.include_router(registration_router.router)              
 
 @app.get("/")
 async def root():
