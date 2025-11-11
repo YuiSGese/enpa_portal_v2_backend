@@ -31,8 +31,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy toàn bộ mã nguồn backend
 COPY . .
 
-# Mở port backend
+# Mở port backend (cho API service)
 EXPOSE 8000
 
-# Lệnh chạy chính thức cho FastAPI backend
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# (ĐÃ XÓA) CMD ["uvicorn", ...]
+# Lệnh CMD sẽ được định nghĩa trong ECS Task Definition (Giai đoạn 3)
