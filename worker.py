@@ -14,11 +14,11 @@ sys.path.append(PROJECT_ROOT)
 
 from app.core import sqs_client
 from app.core.database import SessionLocal, engine # (Import để kiểm tra kết nối)
-from sqlalchemy import text # <--- SỬA LỖI 1: IMPORT 'text'
+from sqlalchemy import text 
 
 # === IMPORT HANDLERS ===
 # Chúng ta import handler cho TẤT CẢ các tool ở đây
-from app.workers import tool03_handler
+from app.tool03 import service as tool03_service
 # (Khi có tool04, bạn sẽ import: from app.workers import tool04_handler)
 # ========================
 
@@ -35,10 +35,11 @@ logger = logging.getLogger(__name__)
 HANDLER_MAP: Dict[str, Callable[[Dict[str, Any]], bool]] = {
     
     # Job Tạo ảnh Tool 03
-    "tool03": tool03_handler.process_tool03_job, 
+    "tool03": tool03_service.process_tool03_job, 
     
     # Job Upload FTP Tool 03 (MỚI)
-    "tool03_ftp": tool03_handler.process_tool03_ftp_job,
+    
+    "tool03_ftp": tool03_service.process_tool03_ftp_job,
     
     # (Khi có tool04, bạn sẽ thêm:)
     # "tool04": tool04_handler.process_tool04_job, 
