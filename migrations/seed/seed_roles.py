@@ -11,14 +11,23 @@ def seed_roles():
     db = SessionLocal()
 
     roles_data = [
-        {"role_name": "ROLE_ADMIN", "description": "Quản trị toàn bộ hệ thống"},
-        {"role_name": "ROLE_USER", "description": ""},
+        {
+            "id": "f97726eb-387d-4839-b686-368c32ba92b0",
+            "role_name": "ROLE_ADMIN", 
+            "description": "",
+        },
+        {
+            "id": "f97726eb-387d-4839-b686-368c32ba92b1",
+            "role_name": "ROLE_USER", 
+            "description": "",
+        },
     ]
 
     for role in roles_data:
         existing_role = db.query(RoleEntity).filter_by(role_name=role["role_name"]).first()
         if not existing_role:
             new_role = RoleEntity(
+                id=role["id"],
                 role_name=role["role_name"],
                 description=role["description"]
             )

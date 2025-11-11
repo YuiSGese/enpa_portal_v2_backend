@@ -12,6 +12,8 @@ from app.domain.entities.RoleEntity import RoleEntity
 from app.domain.entities.CompanyEntity import CompanyEntity
 from app.domain.entities.SampleEntity import SampleEntity
 from app.domain.entities.JobEntity import JobEntity
+from app.domain.entities.ParameterEntity import ParameterEntity
+from app.domain.entities.StoreEntity import StoreEntity
 
 # Tạo bảng
 Base.metadata.create_all(bind=engine)
