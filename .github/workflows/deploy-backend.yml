@@ -1,7 +1,7 @@
 # Tên của workflow
 name: Deploy Backend to AWS ECS
 
-# Kích hoạt workflow khi push code lên nhánh "master"
+# Kích hoạt workflow khi push code lên nhánh "production"
 on:
   push:
     branches: ["production"]
@@ -10,6 +10,16 @@ on:
 permissions:
   id-token: write
   contents: read
+
+# Biến môi trường cho workflow
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_URI }}
+  IMAGE_TAG: latest
+  ECS_CLUSTER_NAME: ${{ secrets.ECS_CLUSTER_NAME }}
+  ECS_SERVICE_API_NAME: ${{ secrets.ECS_SERVICE_API_NAME }}
+  ECS_SERVICE_WORKER_NAME: ${{ secrets.ECS_SERVICE_WORKER_NAME }}
 
 jobs:
   deploy:
@@ -26,7 +36,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
 
       # Bước 3: Đăng nhập vào kho ECR
       - name: Log in to Amazon ECR
@@ -36,21 +46,21 @@ jobs:
       # Bước 4: Build, tag, và push Docker image
       - name: Build, tag, and push image to Amazon ECR
         id: build-image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: latest # Chúng ta sẽ dùng tag 'latest'
         run: |
-          docker build -t $ECR_REGISTRY/${{ secrets.ECR_REPOSITORY_URI }}:$IMAGE_TAG .
-          docker push $ECR_REGISTRY/${{ secrets.ECR_REPOSITORY_URI }}:$IMAGE_TAG
-          echo "::set-output name=image::$ECR_REGISTRY/${{ secrets.ECR_REPOSITORY_URI }}:$IMAGE_TAG"
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
 
-      # Bước 5: Ra lệnh cho ECS deploy (cập nhật service)
-      - name: Deploy to ECS
+      # Bước 5: Ra lệnh cho ECS deploy (CẬP NHẬT 2 SERVICES)
+      # (SỬA LỖI: Cập nhật cả API và WORKER)
+      - name: Deploy API Service to ECS
         run: |
-          aws ecs update-service --cluster empa-cluster-1 --service empa-backend-service --force-new-deployment
-        # LƯU Ý QUAN TRỌNG:
-        # Bước này SẼ THẤT BẠI (FAIL) trong lần chạy đầu tiên,
-        # vì chúng ta CHƯA TẠO "empa-backend-service".
-        # Điều này là BÌNH THƯỜNG.
-        # Mục tiêu chính của lần chạy đầu tiên là đẩy (push) image lên ECR.
-        continue-on-error: true # Cho phép workflow tiếp tục dù bước này lỗi
+          echo "Updating API Service: ${{ env.ECS_SERVICE_API_NAME }}"
+          aws ecs update-service --cluster ${{ env.ECS_CLUSTER_NAME }} --service ${{ env.ECS_SERVICE_API_NAME }} --force-new-deployment
+        continue-on-error: true # Cho phép lỗi nếu service chưa tồn tại
+
+      - name: Deploy Worker Service to ECS
+        run: |
+          echo "Updating Worker Service: ${{ env.ECS_SERVICE_WORKER_NAME }}"
+          aws ecs update-service --cluster ${{ env.ECS_CLUSTER_NAME }} --service ${{ env.ECS_SERVICE_WORKER_NAME }} --force-new-deployment
+        continue-on-error: true # Cho phép lỗi nếu service chưa tồn tại
