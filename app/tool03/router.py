@@ -1,133 +1,135 @@
 # -*- coding: utf-8 -*-
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Path, Body
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Path, Body, Depends
+from fastapi.responses import FileResponse, JSONResponse
 import os
 import shutil
-from typing import List, Dict
-import datetime # datetime をインポート
+from typing import List, Dict, Any
+import datetime
+import logging
 
-# 同一ディレクトリ (.) から schemas と controller をインポート
+from starlette.background import BackgroundTask 
+
+# --- Import CSDL (Mới) ---
+from sqlalchemy.orm import Session
+from app.core.database import get_db
+# ---------------------------
+
 from . import schemas
 from . import controller
-from . import service as tool03_service # ジョブステータス確認用の service をインポート
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/tools/03",
     tags=["Tool 03 - 二重価格画像作成"],
 )
 
-# --- エンドポイント /jobs (POST) ---
+# === ENDPOINT: TẠO JOB ===
 @router.post(
     "/jobs",
     response_model=schemas.Tool03CreateJobResponse,
-    status_code=202 # 受理 (Accepted)
+    status_code=202
 )
 async def create_image_generation_job(
     request: schemas.Tool03CreateJobRequest,
-    background_tasks: BackgroundTasks
+    db: Session = Depends(get_db)
 ):
-    """画像生成ジョブをバックグラウンドで開始します。"""
-    return controller.start_image_generation_job(request.productRows, background_tasks)
+    """(Đã tái cấu trúc) Bắt đầu job tạo ảnh (CSDL + SQS)."""
+    return controller.start_image_generation_job(request.productRows, db)
 
-# --- エンドポイント /jobs/{job_id} (PATCH) ---
+# === ENDPOINT: TÁI TẠO JOB ===
 @router.patch(
     "/jobs/{job_id}",
-    status_code=202 # 受理 (Accepted)
-    # コマンドを受け取るだけなので response_model は不要
+    status_code=202
 )
 async def update_image_generation_job(
-    request: schemas.Tool03CreateJobRequest, # 既存のスキーマを再利用
-    background_tasks: BackgroundTasks,
-    job_id: str = Path(..., description="更新対象のジョブID", min_length=36, max_length=36)
+    request: schemas.Tool03CreateJobRequest,
+    job_id: str = Path(..., description="更新対象のジョブID", min_length=36, max_length=36),
+    db: Session = Depends(get_db)
 ):
-    """ジョブ内の指定された画像を再生成するためのバックグラウンドタスクを開始します。"""
-    if not request.productRows:
-         # 実行する内容がないため、202 (または 200 OK) を返す
-         return {"message": "更新対象の行が指定されていません。"} 
+    """(Đã tái cấu trúc) Tái tạo (thay thế) job (CSDL + SQS)."""
+    return controller.update_image_generation_job(job_id, request.productRows, db)
 
-    # controller を呼び出してバックグラウンド更新タスクを開始
-    controller.start_image_regeneration_job(job_id, request.productRows, background_tasks)
-    return {"message": f"ジョブ {job_id} の画像再生成タスクが開始されました。"}
-
-# --- エンドポイント /jobs/{job_id}/status (GET) ---
+# === ENDPOINT: LẤY STATUS ===
 @router.get(
     "/jobs/{job_id}/status",
     response_model=schemas.Tool03JobStatusResponse
 )
 async def get_job_status(
-    job_id: str = Path(..., description="確認対象のジョブID", min_length=36, max_length=36) # UUID長制約
+    job_id: str = Path(..., description="確認対象のジョブID", min_length=36, max_length=36),
+    db: Session = Depends(get_db)
 ):
-    """画像生成ジョブのステータスを確認します。"""
-    status_data = controller.get_job_status_controller(job_id)
+    """(Đã tái cấu trúc) Lấy trạng thái job (Đọc từ CSDL)."""
+    status_data = controller.get_job_status_controller(job_id, db)
     if status_data is None:
         raise HTTPException(status_code=404, detail="ジョブが見つかりません")
     return status_data
 
-# --- エンドポイント /jobs/{job_id}/image/{filename} (GET) ---
+# === (SỬA LỖI 1) ENDPOINT: LẤY LINK ẢNH ===
 @router.get(
     "/jobs/{job_id}/image/{filename}",
-    response_class=FileResponse
+    response_class=JSONResponse 
 )
 async def get_image_file(
     job_id: str = Path(..., description="ジョブID", min_length=36, max_length=36),
-    filename: str = Path(..., description="取得対象の画像ファイル名")
+    filename: str = Path(..., description="取得対象の画像ファイル名"),
+    db: Session = Depends(get_db) # <<< (SỬA LỖI) Thêm CSDL
 ):
-    """ジョブによって生成された画像ファイルを取得します。"""
-    file_path = controller.get_image_file_path_controller(job_id, filename)
-    if not file_path or not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="画像が見つかりません")
+    """(Đã tái cấu trúc) Lấy S3 Presigned URL cho 1 file ảnh."""
     
-    # ファイル名が有効かチェック (セキュリティエラー回避)
-    if ".." in filename or filename.startswith("/"):
-        raise HTTPException(status_code=400, detail="無効なファイル名です")
+    # (SỬA LỖI) Truyền db vào controller
+    url = controller.get_image_presigned_url_controller(job_id, filename, db)
+    
+    if url is None:
+         raise HTTPException(status_code=404, detail="画像が見つからないか、無効なファイル名です")
+    
+    return JSONResponse(content={"url": url})
 
-    return FileResponse(file_path, media_type="image/jpeg", filename=filename)
-
-
-# --- エンドポイント /jobs/{job_id}/download (GET) ---
+# === ENDPOINT: TẢI ZIP ===
 @router.get(
     "/jobs/{job_id}/download",
     response_class=FileResponse
 )
 async def download_images_zip(
-    job_id: str = Path(..., description="ダウンロード対象のジョブID", min_length=36, max_length=36)
+    job_id: str = Path(..., description="ダウンロード対象のジョブID", min_length=36, max_length=36),
+    db: Session = Depends(get_db)
 ):
-    """ジョブの全画像を含む Zip ファイルを作成してダウンロードします。"""
-    zip_path = controller.create_images_zip_controller(job_id)
-    if not zip_path or not os.path.exists(zip_path):
-        raise HTTPException(status_code=404, detail="ジョブが見つからないか、Zip の作成に失敗しました")
+    """(Đã tái cấu trúc) Tạo Zip (từ S3) và tải về."""
     
-    # ユーザーに返す Zip ファイル名を生成
-    # download_filename = f"tool03_images_{job_id}.zip" # <<< 古い行
-    today_str = datetime.date.today().strftime('%Y%m%d') # 現在の日付 (YYYYMMDD) を取得
-    download_filename = f"{today_str}_image.zip"         # 新しいファイル名を生成
+    try:
+        local_zip_path, download_filename = controller.create_images_zip_controller(job_id, db)
+        
+        if not local_zip_path or not os.path.exists(local_zip_path):
+             logger.error(f"[API] (GET /download) {job_id}: Controller chạy xong nhưng file Zip không tồn tại: {local_zip_path}")
+             raise HTTPException(status_code=500, detail="Zip の作成に失敗しました (File not found after creation).")
+        
+        return FileResponse(
+            path=local_zip_path,
+            filename=download_filename,
+            media_type='application/zip',
+            background=BackgroundTask(os.remove, local_zip_path)
+        )
+        
+    except HTTPException as e:
+         raise e
+    except Exception as e:
+         logger.error(f"[API] (GET /download) {job_id}: Lỗi không xác định trong router: {e}", exc_info=True)
+         raise HTTPException(status_code=500, detail=f"Lỗi router khi tạo Zip: {e}")
 
-    # FileResponse を使用して Zip ファイルを送信
-    # background=BackgroundTask(os.remove, zip_path) # 送信後に Zip ファイルを自動削除 (任意)
-    return FileResponse(
-        path=zip_path,
-        filename=download_filename,
-        media_type='application/zip',
-        # background=BackgroundTask(os.remove, zip_path) # 自動削除する場合はコメント解除
-    )
-
-# --- エンドポイント /jobs/{job_id}/upload (POST) ---
+# === ENDPOINT: TẢI FTP ===
 @router.post(
     "/jobs/{job_id}/upload",
-    status_code=202 # 受理 (Accepted)
+    status_code=202
 )
 async def upload_images_to_ftp(
     job_id: str = Path(..., description="アップロード対象のジョブID", min_length=36, max_length=36),
     payload: Dict[str, str] = Body(..., example={"target": "gold"}),
-    background_tasks: BackgroundTasks = BackgroundTasks() # 変数名の衝突を避ける
+    db: Session = Depends(get_db)
 ):
-    """FTP (GOLD または R-Cabinet) への画像アップロードタスクをバックグラウンドで開始します。"""
+    """(Đã tái cấu trúc) Bắt đầu job upload FTP (CSDL + SQS)."""
+    
     target = payload.get("target")
     if target not in ["gold", "rcabinet"]:
         raise HTTPException(status_code=400, detail="無効なターゲットが指定されました。'gold' または 'rcabinet' を使用してください。")
 
-    # controller を呼び出してバックグラウンドアップロードを開始
-    controller.start_ftp_upload_controller(job_id, target, background_tasks)
-
-    # すぐに 202 を返す
-    return {"message": f"ジョブ {job_id} の {target} へのFTPアップロードタスクがバックグラウンドで開始されました。"}
+    return controller.start_ftp_upload_controller(job_id, target, db)
