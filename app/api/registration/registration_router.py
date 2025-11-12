@@ -6,9 +6,8 @@ from app.api.registration.registration_schemas import DefinitiveRegistrationRequ
 from sqlalchemy.orm import Session
 
 from app.core.bcrypt import get_password_hash
-from app.core.config import PUBLIC_BACKEND_DOMAIN, PUBLIC_FRONTEND_DOMAIN
+from app.core.config import PUBLIC_FRONTEND_DOMAIN
 from app.core.database import get_db
-from app.core.security import require_roles
 from app.core.send_mail import render_template, send_html_email
 from app.domain.entities.RoleEntity import Role
 from app.domain.response.custom_response import custom_error_response
