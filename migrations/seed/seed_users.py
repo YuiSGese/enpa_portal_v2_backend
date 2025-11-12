@@ -7,31 +7,38 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.core.database import SessionLocal
 from app.domain.entities.UserEntity import UserEntity
+from app.core.bcrypt import get_password_hash # <--- SỬA: Thay đổi import và hàm hash
+from app.core.config import ADMIN_INIT_PASSWORD # <--- Dòng MỚI: Import mật khẩu từ SSM/Config
 
 def seed_users():
     db = SessionLocal()
 
+    # Mật khẩu mới sẽ được mã hóa từ biến môi trường (Lấy từ SSM)
+    # GỌI HÀM HASH ĐÚNG TÊN TỪ BCrypt.py
+    hashed_password_admin = get_password_hash(ADMIN_INIT_PASSWORD) # <--- SỬA: Dùng hàm get_password_hash
+
+    # Tạm thời sửa lại data test để dùng mật khẩu ADMIN_INIT_PASSWORD
     users_data = [
         {
             "username": "yui",
             "email": "yui@example.com",
-            "password": "$2b$10$2gaTaMM1Lz1rL5TEGOI3kur/p0R5KegrIn1wDLjEK5JPgKXnWnx1q",  # hashed password
-            "company_id": "f97726eb-387d-4839-b686-368c32ba92c0",
-            "role_id": "f97726eb-387d-4839-b686-368c32ba92b0",
+            "password": hashed_password_admin, 
+            "company_id": 1,
+            "role_id": 1
         },
         {
             "username": "khanh",
             "email": "khanh@example.com",
-            "password": "$2b$10$2gaTaMM1Lz1rL5TEGOI3kur/p0R5KegrIn1wDLjEK5JPgKXnWnx1q",
-            "company_id": "f97726eb-387d-4839-b686-368c32ba92c0",
-            "role_id": "f97726eb-387d-4839-b686-368c32ba92b1",
+            "password": hashed_password_admin, 
+            "company_id": 1,
+            "role_id": 2
         },
         {
             "username": "admin",
             "email": "admin@example.com",
-            "password": "$2b$10$2gaTaMM1Lz1rL5TEGOI3kur/p0R5KegrIn1wDLjEK5JPgKXnWnx1q",
-            "company_id": "f97726eb-387d-4839-b686-368c32ba92c0",
-            "role_id": "f97726eb-387d-4839-b686-368c32ba92b0",
+            "password": hashed_password_admin, 
+            "company_id": 1,
+            "role_id": 1
         },
     ]
 
@@ -53,3 +60,4 @@ def seed_users():
 
 if __name__ == "__main__":
     seed_users()
+
