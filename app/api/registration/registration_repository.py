@@ -117,17 +117,17 @@ class registration_repository:
     
     def create_store(
         self,
-        store_id,
+        store_id: str,
         store_name: str,
         path_name: str,
-        company_id: int = None,
+        company_id: str,
         get_search_type: str = None,
         consulting: bool = None,
         start_date=None,
         telephone_number: str = None
     ) -> StoreEntity:
         new_store = StoreEntity(
-            store_id,
+            id=store_id,
             store_name=store_name,
             path_name=path_name,
             company_id=company_id,
@@ -183,6 +183,6 @@ class registration_repository:
             Default_profit_margin=Default_profit_margin
         )
         self.db.add(new_param)
-        self.db.commit()  # Lưu vào DB
-        self.db.refresh(new_param)  # Lấy dữ liệu mới nhất sau commit
+        self.db.flush() 
+        self.db.refresh(new_param)
         return new_param

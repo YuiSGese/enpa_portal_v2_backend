@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime
 import uuid
 from sqlalchemy import Column, Integer, String, DateTime, CHAR, Boolean, func
 from app.core.database import Base
@@ -15,5 +15,6 @@ class ProvisionalRegistrationEntity(Base):
     consulting_flag = Column(Boolean, nullable=False, server_default="0")
     invalid_flag= Column(Boolean, nullable=False, server_default="0")
     expiration_datetime = Column(DateTime, nullable=False)
-    create_datetime = Column(DateTime, server_default=func.now())
-    update_datetime = Column(DateTime, server_default=func.now())
+    delete_flg = Column(Boolean, nullable=True, default=False)
+    create_datetime = Column(DateTime, default=datetime.now)
+    update_datetime = Column(DateTime, default=datetime.now, onupdate=datetime.now)

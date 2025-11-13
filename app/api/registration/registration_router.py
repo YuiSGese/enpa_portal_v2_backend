@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import date, datetime
 import re
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from app.api.registration.registration_repository import registration_repository
 from app.api.registration.registration_schemas import DefinitiveRegistrationRequest, DefinitiveRegistrationResponse, ProvisionalRegistrationCheckResponse, RegistrationRequest, RegistrationResponse
 from sqlalchemy.orm import Session
@@ -15,7 +15,7 @@ from app.domain.response.custom_response import custom_error_response
 router = APIRouter(prefix="/registration", tags=["registration"])
 
 @router.post("/automatic_registration", response_model=RegistrationResponse)
-def automatic_registration(registration_request: RegistrationRequest, db: Session = Depends(get_db)):
+def automatic_registration(registration_request: RegistrationRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     try:
         with db.begin():
             repo = registration_repository(db)
@@ -33,11 +33,11 @@ def automatic_registration(registration_request: RegistrationRequest, db: Sessio
         template_path = "app/assets/mail_template/registration_template.html"
         context = {
             "username": registration_request.person_name,
-            "cta_link": f"{PUBLIC_FRONTEND_DOMAIN}/registration/verify?token={token}" #doi url FE
+            "cta_link": f"{PUBLIC_FRONTEND_DOMAIN}/registration/definitive_registration?provis_regis_id={token}"
         }
         html_content = render_template(template_path, context)
 
-        send_html_email(registration_request.email, "test subject", html_content)
+        background_tasks.add_task(send_html_email, registration_request.email, "test subject", html_content)
 
         return {
             "detail": "お申し込みありがとうございます。ご入力いただいたメールアドレス宛にメールを送信いたしますので、ご確認ください。",
@@ -48,19 +48,19 @@ def automatic_registration(registration_request: RegistrationRequest, db: Sessio
         return custom_error_response(400, "問題が発生しました!! もう一度お試しください")
 
 @router.get("/provisional_registration/check", response_model=ProvisionalRegistrationCheckResponse)
-def provisional_registration_check(token: str, db: Session = Depends(get_db)):
+def provisional_registration_check(provis_regis_id: str, db: Session = Depends(get_db)):
     try:
         repo = registration_repository(db)
-        prov_reg_record = repo.prov_reg_get_by_id(token)
+        prov_reg_record = repo.prov_reg_get_by_id(provis_regis_id)
         if not prov_reg_record:
             return custom_error_response(400, "仮登録情報が見つかりません。")
 
         if prov_reg_record.invalid_flag == True:
             return custom_error_response(400, "仮登録情報が無効になりました。")
-        
+
         if prov_reg_record.expiration_datetime < datetime.now():
             return custom_error_response(400, "仮登録の期限が切れていました。")
-        
+
         return {
             "detail": "仮登録有効しています。",
             "valid": True
@@ -68,27 +68,27 @@ def provisional_registration_check(token: str, db: Session = Depends(get_db)):
 
     except Exception as e:
         return custom_error_response(400, "問題が発生しました!! もう一度お試しください")
-    
-@router.get("/definitive_registration", response_model=DefinitiveRegistrationResponse)
+
+@router.post("/definitive_registration", response_model=DefinitiveRegistrationResponse)
 def definitive_registration(form_data: DefinitiveRegistrationRequest, db: Session = Depends(get_db)):
 
     try:
         with db.begin():
             repo = registration_repository(db)
             store_entity = repo.store_find(form_data.prov_reg_id, form_data.store_id)
-            
-            if store_entity: 
-                return custom_error_response(400, '既に登録されているショップIDです。再度入力を行ってください。') 
+
+            if store_entity:
+                return custom_error_response(400, '既に登録されているショップIDです。再度入力を行ってください。')
 
             user_entity = repo.user_find_by_username(form_data.username)
 
-            if user_entity: 
-                return custom_error_response(400, '既に使用されているユーザー名です。再度入力を行ってください。') 
+            if user_entity:
+                return custom_error_response(400, '既に使用されているユーザー名です。再度入力を行ってください。')
 
             user_entity = repo.user_find_by_email(form_data.email)
 
-            if user_entity: 
-                return custom_error_response(400, '既に登録済みのユーザーメールアドレスです。再度入力を行ってください。') 
+            if user_entity:
+                return custom_error_response(400, '既に登録済みのユーザーメールアドレスです。再度入力を行ってください。')
 
             company_entity_created = create_company(db, form_data)
             usery_entity_created = create_user(db, form_data)
@@ -99,15 +99,13 @@ def definitive_registration(form_data: DefinitiveRegistrationRequest, db: Sessio
                 #'fincodeクレジット登録メール送信 処理'
                 print('fincodeクレジット登録メール送信 処理')
 
-            
-            # send_html_email(registration_request.email, "test subject", html_content)
-
             return {
                 "detail": "ご登録ありがとうございます。Mailにエンパポータルご利用までの流れを送信いたしますので、ご確認ください。",
             }
     except Exception as e:
+        print(e)
         return custom_error_response(400, "問題が発生しました!! もう一度お試しください")
-    
+
 
 def create_company(db: Session, form_data: DefinitiveRegistrationRequest):
     repo = registration_repository(db)
@@ -115,11 +113,14 @@ def create_company(db: Session, form_data: DefinitiveRegistrationRequest):
     # 仮登録情報
     prov_reg_entity = repo.prov_reg_get_by_id(form_data.prov_reg_id)
 
+    if not prov_reg_entity:
+        raise HTTPException(400, "仮登録情報が存在しません。")
+
     company_name = prov_reg_entity.company_name
     consulting_flag = prov_reg_entity.consulting_flag
     is_free_account = False
     if consulting_flag == True:
-        is_free_account = True        
+        is_free_account = True
 
     entity = repo.create_company(company_id, company_name, True, is_free_account)
     return entity
@@ -131,19 +132,23 @@ def create_user(db: Session, form_data: DefinitiveRegistrationRequest):
     email = form_data.email
     password = get_password_hash("password") # code v1 random pass 15 ki tu
     role_user_entity = repo.get_role_by_role_name(Role.USER.value) # create voi ROLE_USER
+    if not role_user_entity:
+        raise HTTPException(400, "役割データが存在しません。")
     entity = repo.create_user(username, email, password, company_id, role_user_entity.id)
     return entity
 
 def create_store(db: Session, form_data: DefinitiveRegistrationRequest):
     repo = registration_repository(db)
     prov_reg_entity = repo.prov_reg_get_by_id(form_data.prov_reg_id)
+    if not prov_reg_entity:
+        raise HTTPException(400, "仮登録情報が存在しません。")
     store_id = form_data.store_id
     store_name = form_data.store_name
     path_name = form_data.store_url
     company_id = form_data.prov_reg_id
     get_search_type = 'get'
     consulting = prov_reg_entity.consulting_flag
-    start_date =  datetime.date.today()
+    start_date =  date.today()
     telephone_number = prov_reg_entity.telephone_number
     entity = repo.create_store(
         store_id,
@@ -158,7 +163,7 @@ def create_store(db: Session, form_data: DefinitiveRegistrationRequest):
     return entity
 
 def create_parameter(db: Session, form_data: DefinitiveRegistrationRequest):
-    repo = registration_repository(db)   
+    repo = registration_repository(db)
 
     store_id = form_data.store_id
     path_name = f"{form_data.store_id}_{form_data.store_url}"
