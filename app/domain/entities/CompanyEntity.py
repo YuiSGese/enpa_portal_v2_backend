@@ -1,3 +1,4 @@
+from datetime import datetime
 import uuid
 from sqlalchemy import Column, CHAR, String, DateTime, Date, Boolean, func
 from app.core.database import Base
@@ -9,6 +10,6 @@ class CompanyEntity(Base):
     company_name = Column(String(150), nullable=False)
     is_valid = Column(Boolean, nullable=False, server_default="0")       #chua hieu
     is_free_account = Column(Boolean, nullable=False, server_default="0") #tai khoan co consulting_flag se true
-    delete_flg = Column(Boolean, nullable=True, server_default="0")
-    create_datetime = Column(DateTime, server_default=func.now())
-    update_datetime = Column(DateTime, server_default=func.now())
+    delete_flg = Column(Boolean, nullable=True, default=False)
+    create_datetime = Column(DateTime, default=datetime.now)
+    update_datetime = Column(DateTime, default=datetime.now, onupdate=datetime.now)
