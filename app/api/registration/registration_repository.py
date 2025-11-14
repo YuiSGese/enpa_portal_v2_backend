@@ -48,6 +48,22 @@ class registration_repository:
                       .filter(ProvisionalRegistrationEntity.id == id)\
                       .first()
     
+    def prov_reg_update_invalid_flag(self, provisional_id: str, value: bool):
+        record = self.db.query(ProvisionalRegistrationEntity).filter(
+            ProvisionalRegistrationEntity.id == provisional_id
+        ).first()
+
+        if not record:
+            return False
+
+        record.invalid_flag = value
+        record.update_datetime = datetime.now()
+
+        self.db.flush()
+        self.db.refresh(record)
+
+        return True
+    
     def store_find(self, company_id: int, store_id: str) -> StoreEntity | None:
         return (
             self.db.query(StoreEntity)
@@ -174,6 +190,7 @@ class registration_repository:
         Default_profit_margin: str
     ) -> ParameterEntity:
         new_param = ParameterEntity(
+            id=str(uuid.uuid4()),
             store_id=store_id,
             path_name=path_name,
             bundle_execution=bundle_execution,

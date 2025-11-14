@@ -1,11 +1,13 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, Date, Boolean, func
+from sqlalchemy import Column, Integer, String, DateTime, CHAR, Boolean, func
 from app.core.database import Base
+import uuid
 
 class ParameterEntity(Base):
     __tablename__ = "m_parameters"
 
-    store_id = Column(String(8), primary_key=True, nullable=True)
+    id = Column(CHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    store_id = Column(String(8), nullable=True)
     path_name = Column(String(100), nullable=True)
     bundle_execution = Column(String(10), nullable=True)
     bundle_Default_manageNumber = Column("bundle_Default_manageNumber", String(30), nullable=True)

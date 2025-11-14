@@ -1,5 +1,4 @@
 from datetime import date, datetime, timedelta
-from email import message
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from app.api.registration.registration_repository import registration_repository
@@ -20,6 +19,12 @@ def automatic_registration(registration_request: RegistrationRequest, background
     try:
         with db.begin():
             repo = registration_repository(db)
+
+            user_entity = repo.user_find_by_email(registration_request.email)
+            
+            if user_entity: 
+                return custom_error_response(400, "ユーザーメールアドレスを使っていました。他のマールを記入してください。")
+
             entity = repo.create_provisional_registration(
                 registration_request.company_name,
                 registration_request.person_name,
@@ -76,9 +81,8 @@ def provisional_registration_check(provis_regis_id: str, db: Session = Depends(g
 async def definitive_registration(form_data: DefinitiveRegistrationRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
 
     try:
-        with db.begin():
-            repo = registration_repository(db)
-            
+        with db.begin():   
+            repo = registration_repository(db)         
             is_valid, message = form_data_check(db, form_data)
 
             if is_valid == False:    
@@ -108,6 +112,9 @@ async def definitive_registration(form_data: DefinitiveRegistrationRequest, back
                 background_tasks,
             )
 
+            # 仮登録情報レコード無効化
+            repo.prov_reg_update_invalid_flag(form_data.prov_reg_id, True)
+
             return {
                 "detail": "ご登録ありがとうございます。Mailにエンパポータルご利用までの流れを送信いたしますので、ご確認ください。",
             }
@@ -131,12 +138,6 @@ def form_data_check(db: Session, form_data: DefinitiveRegistrationRequest):
     if user_entity:
         is_valid = False
         message = '既に使用されているユーザー名です。再度入力を行ってください。'
-        return is_valid, message
-
-    user_entity = repo.user_find_by_email(form_data.email)
-    if user_entity:
-        is_valid = False
-        message = '既に登録済みのユーザーメールアドレスです。再度入力を行ってください。'
         return is_valid, message
     
     return is_valid, message
@@ -168,7 +169,12 @@ async def send_fincode_credit_registration_mail(db: Session, form_data: Definiti
         raise HTTPException(400, "企業が存在しません。")
 
     # ユーザー情報の取得  
-    user_email = form_data.email
+    user_entity = repo.user_find_by_username(form_data.username)
+
+    if not user_entity:
+        raise HTTPException(400, "ユーザーが存在しません。")
+    
+    user_email = user_entity.email
     company_id = company_entity.id
     # 仮登録情報該当レコード
     prov_reg_entity = repo.prov_reg_get_by_id(form_data.prov_reg_id)
@@ -239,9 +245,13 @@ def create_company(db: Session, form_data: DefinitiveRegistrationRequest):
 
 def create_user(db: Session, form_data: DefinitiveRegistrationRequest):
     repo = registration_repository(db)
+    prov_reg_entity = repo.prov_reg_get_by_id(form_data.prov_reg_id)
+    if not prov_reg_entity:
+        raise HTTPException(400, "仮登録情報が存在しません。")
+    
     company_id = form_data.prov_reg_id
     username = form_data.username
-    email = form_data.email
+    email = prov_reg_entity.email
     password = get_password_hash("password") # code v1 random pass 15 ki tu
     role_user_entity = repo.get_role_by_role_name(Role.USER.value) # create voi ROLE_USER
     if not role_user_entity:

@@ -46,7 +46,6 @@ class DefinitiveRegistrationRequest(BaseModel):
     default_tax_rate: str
     tax_rounding: str
     username: str
-    email: EmailStr
 
 class DefinitiveRegistrationResponse(BaseModel):
     detail: str
