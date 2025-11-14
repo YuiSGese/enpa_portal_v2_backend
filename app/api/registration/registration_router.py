@@ -1,12 +1,13 @@
-from datetime import date, datetime
-import re
+from datetime import date, datetime, timedelta
+from email import message
+import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from app.api.registration.registration_repository import registration_repository
 from app.api.registration.registration_schemas import DefinitiveRegistrationRequest, DefinitiveRegistrationResponse, ProvisionalRegistrationCheckResponse, RegistrationRequest, RegistrationResponse
 from sqlalchemy.orm import Session
 
 from app.core.bcrypt import get_password_hash
-from app.core.config import PUBLIC_FRONTEND_DOMAIN
+from app.core.config import FINCODE_ENDPOINT_URL, FINCODE_PREFIX, FINCODE_SECRET_KEY, PUBLIC_FRONTEND_DOMAIN
 from app.core.database import get_db
 from app.core.send_mail import render_template, send_html_email
 from app.domain.entities.RoleEntity import Role
@@ -31,13 +32,14 @@ def automatic_registration(registration_request: RegistrationRequest, background
 
         token = entity.id
         template_path = "app/assets/mail_template/registration_template.html"
+        subject = '登録'
         context = {
             "username": registration_request.person_name,
             "cta_link": f"{PUBLIC_FRONTEND_DOMAIN}/registration/definitive_registration?provis_regis_id={token}"
         }
         html_content = render_template(template_path, context)
 
-        background_tasks.add_task(send_html_email, registration_request.email, "test subject", html_content)
+        background_tasks.add_task(send_html_email, registration_request.email, subject, html_content)
 
         return {
             "detail": "お申し込みありがとうございます。ご入力いただいたメールアドレス宛にメールを送信いたしますので、ご確認ください。",
@@ -45,6 +47,7 @@ def automatic_registration(registration_request: RegistrationRequest, background
         }
 
     except Exception as e:
+        print(e)
         return custom_error_response(400, "問題が発生しました!! もう一度お試しください")
 
 @router.get("/provisional_registration/check", response_model=ProvisionalRegistrationCheckResponse)
@@ -70,34 +73,40 @@ def provisional_registration_check(provis_regis_id: str, db: Session = Depends(g
         return custom_error_response(400, "問題が発生しました!! もう一度お試しください")
 
 @router.post("/definitive_registration", response_model=DefinitiveRegistrationResponse)
-def definitive_registration(form_data: DefinitiveRegistrationRequest, db: Session = Depends(get_db)):
+async def definitive_registration(form_data: DefinitiveRegistrationRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
 
     try:
         with db.begin():
             repo = registration_repository(db)
-            store_entity = repo.store_find(form_data.prov_reg_id, form_data.store_id)
+            
+            is_valid, message = form_data_check(db, form_data)
 
-            if store_entity:
-                return custom_error_response(400, '既に登録されているショップIDです。再度入力を行ってください。')
-
-            user_entity = repo.user_find_by_username(form_data.username)
-
-            if user_entity:
-                return custom_error_response(400, '既に使用されているユーザー名です。再度入力を行ってください。')
-
-            user_entity = repo.user_find_by_email(form_data.email)
-
-            if user_entity:
-                return custom_error_response(400, '既に登録済みのユーザーメールアドレスです。再度入力を行ってください。')
+            if is_valid == False:    
+                return custom_error_response(400, message)
 
             company_entity_created = create_company(db, form_data)
-            usery_entity_created = create_user(db, form_data)
+            user_entity_created = create_user(db, form_data)
             store_entity_created = create_store(db, form_data)
             parameter_entity_created = create_parameter(db, form_data)
 
+            # fincodeのAPIでクレジット登録メールを送信
             if company_entity_created.is_free_account == False:
                 #'fincodeクレジット登録メール送信 処理'
                 print('fincodeクレジット登録メール送信 処理')
+                await send_fincode_credit_registration_mail(db, form_data)
+
+            if company_entity_created.is_free_account == True:
+                # タスク作成
+                print('create_chatwork_task')
+
+            # エマール送信作成
+            send_intruction_mail(
+                user_entity_created.username, 
+                company_entity_created.company_name, 
+                store_entity_created.store_name,
+                user_entity_created.email,
+                background_tasks,
+            )
 
             return {
                 "detail": "ご登録ありがとうございます。Mailにエンパポータルご利用までの流れを送信いたしますので、ご確認ください。",
@@ -105,6 +114,109 @@ def definitive_registration(form_data: DefinitiveRegistrationRequest, db: Sessio
     except Exception as e:
         print(e)
         return custom_error_response(400, "問題が発生しました!! もう一度お試しください")
+    
+def form_data_check(db: Session, form_data: DefinitiveRegistrationRequest):
+
+    is_valid = True
+    message = ''
+    repo = registration_repository(db)
+    store_entity = repo.store_find(form_data.prov_reg_id, form_data.store_id)
+    if store_entity:
+        is_valid = False
+        message = '既に登録されているショップIDです。再度入力を行ってください。'
+        return is_valid, message
+        
+    user_entity = repo.user_find_by_username(form_data.username)
+
+    if user_entity:
+        is_valid = False
+        message = '既に使用されているユーザー名です。再度入力を行ってください。'
+        return is_valid, message
+
+    user_entity = repo.user_find_by_email(form_data.email)
+    if user_entity:
+        is_valid = False
+        message = '既に登録済みのユーザーメールアドレスです。再度入力を行ってください。'
+        return is_valid, message
+    
+    return is_valid, message
+    
+def send_intruction_mail(username: str, company_name: str, store_name: str, email: str, background_tasks: BackgroundTasks):
+    template_path = "app/assets/mail_template/instruction_template.html"
+    subject = 'エンパタウンへようこそ' + username + '様'
+    context = {
+        "username": username,
+        "company_name": company_name,
+        "store_name": store_name,
+    }
+    attachment_files_to_send = [
+    "app/assets/docs/エンパタウンPORTAL初期設定手順書.xlsx",
+    ]
+    html_content = render_template(template_path, context)
+
+    background_tasks.add_task(send_html_email, email, subject, html_content, attachment_files_to_send)
+
+    
+async def send_fincode_credit_registration_mail(db: Session, form_data: DefinitiveRegistrationRequest):
+    """
+    fincodeのAPIを使用してクレジットカード登録用メールを送信する
+    """
+    repo = registration_repository(db)
+    company_entity = repo.company_find_by_id(form_data.prov_reg_id)
+
+    if not company_entity:
+        raise HTTPException(400, "企業が存在しません。")
+
+    # ユーザー情報の取得  
+    user_email = form_data.email
+    company_id = company_entity.id
+    # 仮登録情報該当レコード
+    prov_reg_entity = repo.prov_reg_get_by_id(form_data.prov_reg_id)
+    company_name = prov_reg_entity.company_name
+    person_name = prov_reg_entity.person_name
+
+    # 有効期限
+    expire_date = (datetime.now() + timedelta(days=7)).strftime("%Y/%m/%d %H:%M:%S")
+
+    # カードセッション作成用データ
+    card_session_data = {
+        # 成功時リダイレクトURL
+        'success_url': f"{PUBLIC_FRONTEND_DOMAIN}/credit-registration-complete/?provis_regis_id={str(company_id)}",
+        # 登録URL 有効期限
+        'expire': expire_date,
+        # 送信先メールアドレス
+        'receiver_mail': user_email,
+        # カード登録をするユーザーの名前
+        'mail_customer_name': person_name,
+        # カード登録メール 送信フラグ
+        'guide_mail_send_flag': '1',
+        # 完了メール 送信フラグ
+        'completion_mail_send_flag': '1',
+        # メールテンプレートID
+        'shop_mail_template_id': None,
+        # 顧客ID
+        'customer_id': company_id,
+        # 顧客名
+        'customer_name': company_name,
+        # 3Dセキュア認証を利用
+        'tds_type': '0',
+    }
+
+    # APIリクエストの作成
+    authorization_header = FINCODE_PREFIX + FINCODE_SECRET_KEY
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        response = await client.post(
+            FINCODE_ENDPOINT_URL,
+            headers={
+                "Authorization": authorization_header,
+                "Content-Type": "application/json",
+            },
+            json=card_session_data
+        )
+
+    if response.status_code == 200:
+        print('success fincode')
 
 
 def create_company(db: Session, form_data: DefinitiveRegistrationRequest):

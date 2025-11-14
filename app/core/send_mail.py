@@ -2,16 +2,33 @@ from jinja2 import Template
 import smtplib
 from email.message import EmailMessage
 from app.core.config import SMTP_HOST, SMTP_PASS, SMTP_PORT, SMTP_USER
+import mimetypes
+import os
 
-def send_html_email(to_email: str, subject: str, body: str):
+def send_html_email(to_email: str, subject: str, body: str, attachment_paths: list = None):
     msg = EmailMessage()
     msg["From"] = SMTP_USER
     msg["To"] = to_email
     msg["Subject"] = subject
     msg.set_content(body, subtype="html")
 
+    # Nếu có danh sách file đính kèm
+    if attachment_paths:
+        for attachment_path in attachment_paths:
+            if os.path.isfile(attachment_path):
+                filename = os.path.basename(attachment_path)
+                mime_type, _ = mimetypes.guess_type(attachment_path)
+                if mime_type is None:
+                    mime_type = "application/octet-stream"
+                maintype, subtype = mime_type.split("/", 1)
+
+                with open(attachment_path, "rb") as f:
+                    file_data = f.read()
+                    msg.add_attachment(file_data, maintype=maintype, subtype=subtype, filename=filename)
+
+    # Gửi mail
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-        server.starttls() 
+        server.starttls()
         server.login(SMTP_USER, SMTP_PASS)
         server.send_message(msg)
 

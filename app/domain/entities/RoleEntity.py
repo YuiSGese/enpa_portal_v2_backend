@@ -6,6 +6,7 @@ import enum
 
 class Role(enum.Enum):
     ADMIN = "ROLE_ADMIN"
+    MANAGER = "ROLE_MANAGER"
     USER = "ROLE_USER"
     
 class RoleEntity(Base):

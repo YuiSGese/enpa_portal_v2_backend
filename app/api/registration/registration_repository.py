@@ -53,7 +53,7 @@ class registration_repository:
             self.db.query(StoreEntity)
             .filter(
                 StoreEntity.company_id == company_id,
-                StoreEntity.id == store_id,
+                StoreEntity.store_id == store_id,
                 StoreEntity.delete_flg == False
             )
             .first()
@@ -78,6 +78,16 @@ class registration_repository:
             )
             .first()
         )
+    
+    def company_find_by_id(self, company_id: str):
+        return (
+            self.db.query(CompanyEntity)
+            .filter(
+                CompanyEntity.id == company_id,
+                CompanyEntity.delete_flg == False
+            )
+            .first()
+        )   
     
     def create_company(
         self,
@@ -127,7 +137,8 @@ class registration_repository:
         telephone_number: str = None
     ) -> StoreEntity:
         new_store = StoreEntity(
-            id=store_id,
+            id=str(uuid.uuid4()),
+            store_id=store_id,
             store_name=store_name,
             path_name=path_name,
             company_id=company_id,
