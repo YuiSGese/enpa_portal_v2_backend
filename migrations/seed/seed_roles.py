@@ -18,6 +18,11 @@ def seed_roles():
         },
         {
             "id": "f97726eb-387d-4839-b686-368c32ba92b1",
+            "role_name": "ROLE_MANAGER", 
+            "note": "",
+        },
+        {
+            "id": "f97726eb-387d-4839-b686-368c32ba92b3",
             "role_name": "ROLE_USER", 
             "note": "",
         },

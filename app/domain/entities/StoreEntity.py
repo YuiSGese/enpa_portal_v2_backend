@@ -7,6 +7,7 @@ class StoreEntity(Base):
     __tablename__ = "m_stores"
 
     id = Column(CHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    store_id = Column(String(6), nullable=False)
     store_name = Column(String(100), nullable=False)
     rlogin_id = Column(String(100), nullable=True)
     rlogin_pw = Column(String(100), nullable=True)

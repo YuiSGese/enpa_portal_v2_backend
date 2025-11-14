@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width">
+  <title>Empowerment Portal Email</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #f6f7f9;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    .email-wrapper {
+      width: 100%;
+      padding: 30px 10px;
+      background-color: #f6f7f9;
+    }
+
+    .email-container {
+      max-width: 600px;
+      margin: 0 auto;
+      background-color: #ffffff;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      border-top: 6px solid #E6372D;
+    }
+
+    .header {
+      text-align: center;
+      padding: 30px 20px 10px 20px;
+    }
+
+    .header img {
+      max-width: 180px;
+      height: auto;
+    }
+
+    .content {
+      padding: 20px 40px;
+      color: #333333;
+      line-height: 1.6;
+    }
+
+    .content h1 {
+      color: #E6372D;
+      font-size: 24px;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+
+    .content p {
+      font-size: 15px;
+      margin-bottom: 16px;
+    }
+
+    .highlight-box {
+      border: 2px solid #e3c710; /* viền vàng đậm */
+      padding: 15px;
+      margin: 20px 0;
+      background-color: #fff9e5; /* vàng nhạt hài hòa */
+      border-radius: 6px;
+    }
+
+    .highlight-box .title {
+      margin-top: 10px;
+      margin-bottom: 10px;
+    }
+
+    .highlight-box p {
+      margin: 0;
+      line-height: 1.5;
+      font-size: 14px;
+      color: #333333; /* chữ tối để dễ đọc */
+    }
+
+    .button-container {
+      text-align: center;
+      margin-top: 25px;
+      margin-bottom: 25px;
+    }
+
+    .button {
+      display: inline-block;
+      background-color: #E6372D;
+      color: #ffffff !important;
+      text-decoration: none;
+      padding: 12px 28px;
+      border-radius: 6px;
+      font-weight: bold;
+      font-size: 15px;
+    }
+
+    .button:hover {
+      opacity: 0.9;
+    }
+
+    .footer {
+      background-color: #f9f9f9;
+      padding: 20px 30px;
+      text-align: center;
+      font-size: 13px;
+      color: #777777;
+      border-top: 1px solid #eeeeee;
+    }
+
+    @media screen and (max-width: 600px) {
+      .content {
+        padding: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="email-wrapper">
+    <div class="email-container">
+      <!-- Header -->
+      <div class="header">
+        <img src="https://empowerment-town.com/wp-content/themes/Empo_web/img/ヘッダ_エンパタウン.bmp" alt="Empowerment Portal">
+      </div>
+
+      <!-- Content -->
+      <div class="content">
+        <h1>エンパタウンへようこそ{{username}}様</h1>
+        <p>
+          企業名：{{company_name}}株式会社<br>
+          ストア名：{{store_name}}店<br>
+        </p>
+
+        <p>エンパポータルへのご登録ありがとうございます。</p>
+        <p>この後のエンパポータルご利用までの流れをご説明いたします。</p>
+
+        <!-- Highlighted section for credit card registration -->
+        <div class="highlight-box">
+          <p class="title"><strong>【1】 クレジットカードのご登録</strong></p>
+          <p>
+            ご登録に使用されたメールアドレスに、本サービスの決済代行業者である
+            GMOイプシロン株式会社より、クレジットカード情報の入力に関するメールが送信されています。
+            利用料金のお支払いにご利用されるクレジットカードの情報をご登録ください。
+          </p>
+          <p class="title"><strong>【2】 RMSの利用者登録</strong><br></p>
+          <p>
+            以下のメールアドレスをRMSの利用者として追加してください。
+            その際、「R-Loginサービス別権限設定」を「通常」「R-Backofficeを除く」のいずれかに設定してください。
+            追加していただくメールアドレス: log-empo@empowerment-town.com
+          </p>
+          <p>（参考）<br>
+            <a href="https://navi-manual.faq.rakuten.net/service/000035289" target="_blank">R-Login スタッフ登録（申請）について</a><br>
+            <a href="https://navi-manual.faq.rakuten.net/service/000034072" target="_blank">R-Login 権限の種類について</a><br>
+            <a href="https://glogin.gl.rakuten.co.jp/help/6_01.html" target="_blank">利用者の承認、権限設定について</a>
+          </p>
+          <p class="title"><strong>【3】 初期設定</strong><br></p>
+          <p>
+            クレジットカード登録後、2〜3営業日以内に、ログインURL、ID、パスワードを
+            このチャットでお届けいたしますので、初期設定を行ってください。<br>
+            初期設定の手順書は、エマルの添付から確認お願いします。
+          </p>
+          <p class="title"><strong>【4】 ご利用開始</strong><br></p>
+          <p>
+            初期設定完了後、エンパポータルをご利用いただけます。
+          </p>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="footer">
+        <p>© エンパタウン株式会社</p>
+        <p>733-0011 広島県広島市西区横川町3-12-18横川駅前ビル5F • 日本</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

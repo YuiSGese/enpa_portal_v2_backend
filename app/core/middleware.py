@@ -11,7 +11,8 @@ EXEMPT_PATHS = [
     "/docs",
     "/redoc", 
     "/openapi.json",
-    "/api/tools/03"
+    "/api/tools/03",
+    "/test"
 ]  
 
 async def jwt_role_middleware(request: Request, call_next):
